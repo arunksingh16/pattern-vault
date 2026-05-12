@@ -6,6 +6,7 @@ Each tool is a simple Python function that the orchestrator can call.
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -19,11 +20,113 @@ from ..store.db import (
     get_stats,
 )
 
+WORKSPACE_ROOTS_ENV = "PATTERN_VAULT_WORKSPACE_ROOTS"
+MAX_TOOL_FILE_SIZE = 200_000
+MAX_TOOL_LINES = 1_000
+
+BLOCKED_PATH_PARTS = {
+    ".aws",
+    ".azure",
+    ".config",
+    ".gnupg",
+    ".ssh",
+    ".git",
+}
+
+BLOCKED_FILENAMES = {
+    ".env",
+    ".env.local",
+    ".env.production",
+    ".npmrc",
+    ".pypirc",
+    "credentials",
+    "credentials.json",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "id_rsa",
+    "secrets.json",
+}
+
 
 def _get_conn(db_path: Optional[Path] = None):
     conn = get_connection(db_path)
     init_db(conn)
     return conn
+
+
+def get_workspace_roots() -> list[Path]:
+    """Return configured roots that agent file tools are allowed to inspect."""
+    raw_roots = os.environ.get(WORKSPACE_ROOTS_ENV)
+    if raw_roots:
+        roots = [
+            Path(root).expanduser().resolve()
+            for root in raw_roots.split(os.pathsep)
+            if root.strip()
+        ]
+    else:
+        roots = [Path.cwd().resolve()]
+    return roots
+
+
+def _is_under_root(path: Path, roots: list[Path]) -> bool:
+    return any(path == root or root in path.parents for root in roots)
+
+
+def _has_blocked_path_part(path: Path) -> bool:
+    parts = {part.lower() for part in path.parts}
+    return bool(parts & BLOCKED_PATH_PARTS) or path.name.lower() in BLOCKED_FILENAMES
+
+
+def _json_error(message: str) -> str:
+    return json.dumps({"error": message})
+
+
+def _validate_tool_path(path: str, expect_file: bool) -> tuple[Optional[Path], Optional[str]]:
+    p = Path(path).expanduser().resolve()
+    roots = get_workspace_roots()
+
+    if not _is_under_root(p, roots):
+        root_list = ", ".join(str(root) for root in roots)
+        return None, (
+            f"Path is outside allowed workspace roots: {p}. "
+            f"Set {WORKSPACE_ROOTS_ENV} to allow additional roots. "
+            f"Configured roots: {root_list}"
+        )
+
+    if _has_blocked_path_part(p):
+        return None, f"Blocked sensitive path: {p}"
+
+    if not p.exists():
+        return None, f"Path not found: {path}"
+
+    if expect_file and not p.is_file():
+        return None, f"Not a file: {path}"
+
+    if not expect_file and not p.is_dir():
+        return None, f"Not a directory: {path}"
+
+    return p, None
+
+
+def _validate_source_file(path: str) -> tuple[Optional[Path], Optional[str]]:
+    p, error = _validate_tool_path(path, expect_file=True)
+    if error or p is None:
+        return None, error
+
+    if p.suffix not in LANG_MAP:
+        return None, f"Unsupported source file type: {p.suffix or '<none>'}"
+
+    size = p.stat().st_size
+    if size > MAX_TOOL_FILE_SIZE:
+        return None, f"File is too large for tool access: {size} bytes"
+
+    with p.open("rb") as file:
+        sample = file.read(4096)
+    if b"\x00" in sample:
+        return None, f"Refusing to read binary file: {p}"
+
+    return p, None
 
 
 # ── Tool definitions (for Claude tool-use API) ─────────────────
@@ -149,7 +252,11 @@ def execute_tool(
 
 
 def _tool_scan_directory(path: str) -> str:
-    manifest = scan_directory(path)
+    root, error = _validate_tool_path(path, expect_file=False)
+    if error or root is None:
+        return _json_error(error or "Invalid directory")
+
+    manifest = scan_directory(root)
     return json.dumps({
         "total_files": manifest.total_files,
         "skipped": manifest.skipped,
@@ -163,12 +270,12 @@ def _tool_scan_directory(path: str) -> str:
 
 
 def _tool_read_file(path: str, max_lines: int = 200) -> str:
-    p = Path(path)
-    if not p.exists():
-        return json.dumps({"error": f"File not found: {path}"})
-    if not p.is_file():
-        return json.dumps({"error": f"Not a file: {path}"})
+    p, error = _validate_source_file(path)
+    if error or p is None:
+        return _json_error(error or "Invalid file")
+
     try:
+        max_lines = max(1, min(int(max_lines), MAX_TOOL_LINES))
         text = p.read_text(errors="replace")
         lines = text.split("\n")
         truncated = len(lines) > max_lines
@@ -186,9 +293,10 @@ def _tool_read_file(path: str, max_lines: int = 200) -> str:
 
 
 def _tool_parse_symbols(path: str) -> str:
-    p = Path(path)
-    if not p.exists():
-        return json.dumps({"error": f"File not found: {path}"})
+    p, error = _validate_source_file(path)
+    if error or p is None:
+        return _json_error(error or "Invalid file")
+
     lang = LANG_MAP.get(p.suffix, "unknown")
     chunks = chunk_file(p, lang)
     return json.dumps({

@@ -8,21 +8,32 @@ Uses sqlite-vec for vector search when available, falls back to FTS-only.
 import sqlite3
 import json
 import hashlib
+import os
 import time
 from pathlib import Path
 from typing import Optional
 
 DB_VERSION = 1
 DEFAULT_DB_PATH = Path.home() / ".pattern-vault" / "patterns.db"
+DB_PATH_ENV = "PATTERN_VAULT_DB"
 
 
 def _content_hash(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
+def resolve_db_path(db_path: Optional[str | Path] = None) -> Path:
+    """Resolve the active vault database path.
+
+    Explicit arguments win, then PATTERN_VAULT_DB, then the default local vault.
+    """
+    raw_path = db_path or os.environ.get(DB_PATH_ENV) or DEFAULT_DB_PATH
+    return Path(raw_path).expanduser()
+
+
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
     """Get a connection to the pattern vault database."""
-    path = db_path or DEFAULT_DB_PATH
+    path = resolve_db_path(db_path)
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row

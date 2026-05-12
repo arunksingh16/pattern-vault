@@ -7,7 +7,6 @@ Tools: search_patterns, get_pattern, add_pattern, save_insight,
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -29,11 +28,12 @@ from src.store.db import (  # noqa: E402
     list_tags as db_list_tags,
     list_categories as db_list_categories,
     get_stats as db_get_stats,
+    resolve_db_path,
 )
 
 # ── Server setup ─────────────────────────────────────────────
 
-DB_PATH = Path(os.environ.get("PATTERN_VAULT_DB", str(Path.home() / ".pattern-vault" / "patterns.db")))
+DB_PATH = resolve_db_path()
 
 mcp = FastMCP("pattern_vault_mcp")
 

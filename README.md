@@ -168,6 +168,8 @@ Single SQLite file at `~/.pattern-vault/patterns.db` (override with `PATTERN_VAU
 
 Tables: `patterns` (metadata + tags), `chunks` (actual code), `repo_insights` (architectural observations), `patterns_fts` (FTS5 virtual table for search).
 
+Agent file tools are limited to configured workspace roots. By default they can inspect the current working directory only. Set `PATTERN_VAULT_WORKSPACE_ROOTS` to an `os.pathsep`-separated list of repo roots when the UI/MCP agent needs to scan or read additional repositories.
+
 ## Project structure
 
 ```

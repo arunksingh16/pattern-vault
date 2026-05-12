@@ -32,12 +32,9 @@ from src.client import make_async_client, get_model, describe_backend  # noqa: E
 from src.agent.tools import TOOL_DEFINITIONS, execute_tool  # noqa: E402
 from src.agent.orchestrator import SYSTEM_PROMPT  # noqa: E402
 from src.server.mcp_server import mcp as pattern_vault_mcp  # noqa: E402
-from src.store.db import get_connection, init_db, get_stats, get_pattern  # noqa: E402
+from src.store.db import get_connection, init_db, get_stats, get_pattern, resolve_db_path  # noqa: E402
 
-DB_PATH = Path(os.environ.get(
-    "PATTERN_VAULT_DB",
-    str(Path.home() / ".pattern-vault" / "patterns.db"),
-))
+DB_PATH = resolve_db_path()
 HISTORY_DIR = Path(os.environ.get(
     "PATTERN_VAULT_HISTORY_DIR",
     str(DB_PATH.parent / "chat-history"),

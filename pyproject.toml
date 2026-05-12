@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pytest>=8.0.0",
     "pre-commit>=3.7.0",
     "bandit>=1.8.0",
     "detect-secrets>=1.5.0",
@@ -31,3 +32,6 @@ pv = "src.cli:main"
 [tool.bandit]
 exclude_dirs = ["venv", ".venv", "tests"]
 skips = []           # add "B101" here to skip assert warnings if needed
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
