@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Copy this file to run.sh and fill in your credentials.
+# run.sh is git-ignored and should NEVER be committed.
+
+# ── Pick one backend ──────────────────────────────────────────────────────────
+
+# Option 1: AWS Bedrock
+export PATTERN_VAULT_BACKEND=bedrock
+export AWS_ACCESS_KEY_ID="YOUR_AWS_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY="YOUR_AWS_SECRET_ACCESS_KEY"
+export AWS_SESSION_TOKEN="YOUR_AWS_SESSION_TOKEN"   # omit if using long-term keys
+export AWS_REGION=eu-west-1
+export PATTERN_VAULT_MODEL="eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+
+# Option 2: Direct Anthropic API
+# export PATTERN_VAULT_BACKEND=anthropic
+# export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Option 3: Bifrost proxy
+# export PATTERN_VAULT_BACKEND=bifrost
+# export BIFROST_URL="http://localhost:8080/anthropic"
+# export BIFROST_API_KEY="your-virtual-key"
+
+# ── Optional overrides ────────────────────────────────────────────────────────
+# export PATTERN_VAULT_DB="/path/to/custom.db"
+
+# ── Launch ────────────────────────────────────────────────────────────────────
+chainlit run src/ui/app.py   # or: python -m src.cli chat

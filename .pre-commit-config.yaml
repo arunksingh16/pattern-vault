@@ -1,0 +1,50 @@
+repos:
+  # ── Secrets detection ───────────────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.24.3
+    hooks:
+      - id: gitleaks
+        name: "🔑 gitleaks – detect secrets"
+
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        name: "🔒 detect-secrets – scan for credentials"
+        args: ["--baseline", ".secrets.baseline"]
+        exclude: |
+          (?x)
+          run\.sh\.example|
+          \.secrets\.baseline
+
+  # ── General file hygiene ────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=500"]
+      - id: no-commit-to-branch
+        args: ["--branch", "main"]
+
+  # ── Python security ─────────────────────────────────────────────────────────
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.8.3
+    hooks:
+      - id: bandit
+        name: "🛡️  bandit – Python security lint"
+        args: ["-c", "pyproject.toml"]
+        files: ^src/
+
+  # ── Python code quality ──────────────────────────────────────────────────────
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.10
+    hooks:
+      - id: ruff
+        name: "🐍 ruff – Python linter"
+        args: ["--fix"]

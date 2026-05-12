@@ -1,0 +1,16 @@
+[project]
+name = "Pattern Vault"
+enable_telemetry = false
+
+[features]
+prompt_playground = false
+multi_modal = false
+
+[UI]
+name = "Pattern Vault"
+description = "Extract, index, and retrieve reusable code patterns"
+default_collapse_content = true
+hide_cot = false
+
+[meta]
+generated_by = "pattern-vault"

@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "pattern-vault": {
+      "command": "python",
+      "args": ["src/server/mcp_server.py"],
+      "env": {
+        "PATTERN_VAULT_DB": "~/.pattern-vault/patterns.db"
+      }
+    }
+  }
+}
