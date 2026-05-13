@@ -1,14 +1,5 @@
-# Welcome to Chainlit! 🚀🤖
+# Pattern Vault
 
-Hi there, Developer! 👋 We're excited to have you on board. Chainlit is a powerful tool designed to help you prototype, debug and share applications built on top of LLMs.
+Browse, curate, and reuse proven implementation patterns from indexed repositories.
 
-## Useful Links 🔗
-
-- **Documentation:** Get started with our comprehensive [Chainlit Documentation](https://docs.chainlit.io) 📚
-- **Discord Community:** Join our friendly [Chainlit Discord](https://discord.gg/k73SQ3FyUh) to ask questions, share your projects, and connect with other developers! 💬
-
-We can't wait to see what you create with Chainlit! Happy coding! 💻😊
-
-## Welcome screen
-
-To modify the welcome screen, edit the `chainlit.md` file at the root of your project. If you do not want a welcome screen, just leave this file empty.
+Use the workspace actions to open saved patterns, inspect repo insights, check MCP status, or manage pattern records. The chat can still scan repositories, search the vault, and save useful patterns during review.

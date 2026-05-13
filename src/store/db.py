@@ -220,6 +220,117 @@ def get_pattern(conn: sqlite3.Connection, pattern_id: int) -> Optional[dict]:
     return result
 
 
+def update_pattern(
+    conn: sqlite3.Connection,
+    pattern_id: int,
+    *,
+    name: Optional[str] = None,
+    summary: Optional[str] = None,
+    category: Optional[str] = None,
+    language: Optional[str] = None,
+    tags: Optional[list[str]] = None,
+    quality_signal: Optional[str] = None,
+    source_repo: Optional[str] = None,
+    source_file: Optional[str] = None,
+    line_start: Optional[int] = None,
+    line_end: Optional[int] = None,
+    code_text: Optional[str] = None,
+) -> bool:
+    """Update pattern metadata and optionally replace its primary code chunk."""
+    existing = conn.execute(
+        "SELECT id FROM patterns WHERE id = ?", (pattern_id,)
+    ).fetchone()
+    if not existing:
+        return False
+
+    fields = {
+        "name": name,
+        "summary": summary,
+        "category": category,
+        "language": language,
+        "tags": json.dumps(tags) if tags is not None else None,
+        "quality_signal": quality_signal,
+        "source_repo": source_repo,
+        "source_file": source_file,
+        "line_start": line_start,
+        "line_end": line_end,
+    }
+    updates = [(key, value) for key, value in fields.items() if value is not None]
+
+    if code_text is not None:
+        content_hash = _content_hash(code_text)
+        duplicate = conn.execute(
+            "SELECT id FROM patterns WHERE content_hash = ? AND id != ?",
+            (content_hash, pattern_id),
+        ).fetchone()
+        if duplicate:
+            raise ValueError(f"Code text duplicates existing pattern {duplicate['id']}")
+        fields["content_hash"] = content_hash
+        updates.append(("content_hash", content_hash))
+
+    if updates:
+        conn.execute(
+            """
+            UPDATE patterns
+            SET name = COALESCE(?, name),
+                summary = COALESCE(?, summary),
+                category = COALESCE(?, category),
+                language = COALESCE(?, language),
+                tags = COALESCE(?, tags),
+                quality_signal = COALESCE(?, quality_signal),
+                source_repo = COALESCE(?, source_repo),
+                source_file = COALESCE(?, source_file),
+                line_start = COALESCE(?, line_start),
+                line_end = COALESCE(?, line_end),
+                content_hash = COALESCE(?, content_hash),
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (
+                fields["name"],
+                fields["summary"],
+                fields["category"],
+                fields["language"],
+                fields["tags"],
+                fields["quality_signal"],
+                fields["source_repo"],
+                fields["source_file"],
+                fields["line_start"],
+                fields["line_end"],
+                fields.get("content_hash"),
+                time.time(),
+                pattern_id,
+            ),
+        )
+
+    if code_text is not None:
+        primary_chunk = conn.execute(
+            "SELECT id FROM chunks WHERE pattern_id = ? ORDER BY id LIMIT 1",
+            (pattern_id,),
+        ).fetchone()
+        if primary_chunk:
+            conn.execute(
+                "UPDATE chunks SET code_text = ? WHERE id = ?",
+                (code_text, primary_chunk["id"]),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO chunks (pattern_id, code_text, chunk_type)
+                   VALUES (?, ?, 'implementation')""",
+                (pattern_id, code_text),
+            )
+
+    conn.commit()
+    return True
+
+
+def delete_pattern(conn: sqlite3.Connection, pattern_id: int) -> bool:
+    """Delete a pattern and its chunks. Returns True when a row was removed."""
+    cursor = conn.execute("DELETE FROM patterns WHERE id = ?", (pattern_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
 def list_tags(conn: sqlite3.Connection, category: Optional[str] = None) -> list[str]:
     """List all unique tags, optionally filtered by category."""
     if category:

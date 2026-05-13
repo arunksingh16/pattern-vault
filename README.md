@@ -127,14 +127,22 @@ Agent: [saves 2 patterns] [saves 1 insight] Done.
 
 The Chainlit UI shows each tool call as a collapsible step so you can see exactly what the agent is doing.
 
-The Chainlit welcome message also includes:
-- **View saved patterns** — browse recently saved patterns and open full code/details from the UI.
+The Chainlit workspace also includes:
+- **Vault workspace** — view counts, languages, categories, tags, active DB path, and backend status on the first screen.
+- **Pattern browser** — browse recent patterns, open full code/details, edit metadata, and delete stale entries.
+- **Repo insights** — browse recent repo-level observations saved during analysis.
 - **History file** — show the JSONL transcript path for the current chat session.
 - **MCP server** — show local MCP registration, DB status, run commands, optional HTTP reachability, and exposed tools.
 
 Chat history is saved by default under `~/.pattern-vault/chat-history/`. Override it with `PATTERN_VAULT_HISTORY_DIR=/path/to/history`.
 
 For HTTP MCP status checks in the UI, set `PATTERN_VAULT_MCP_URL`, for example `PATTERN_VAULT_MCP_URL=http://127.0.0.1:8000/mcp`.
+
+HTTP serving uses FastMCP's streamable HTTP transport:
+
+```bash
+python -m src.cli serve --transport http --host 127.0.0.1 --port 8000
+```
 
 ## MCP tools
 

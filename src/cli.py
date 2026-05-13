@@ -134,7 +134,9 @@ def cmd_serve(args):
 
     print("Starting Pattern Vault MCP server...")
     if args.transport == "http":
-        mcp.run(transport="streamable_http", port=args.port)
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+        mcp.run(transport="streamable-http")
     else:
         mcp.run()
 
@@ -165,6 +167,7 @@ def main():
 
     # serve
     p_serve = subparsers.add_parser("serve", help="Run MCP server")
+    p_serve.add_argument("--host", default="127.0.0.1", help="HTTP host")
     p_serve.add_argument("--port", type=int, default=8000, help="HTTP port")
     p_serve.add_argument("--transport", choices=["stdio", "http"], default="stdio", help="Transport type")
 

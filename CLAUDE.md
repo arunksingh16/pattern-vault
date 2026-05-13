@@ -164,6 +164,7 @@ The extraction prompt in `src/indexer/extractor.py` classifies patterns into:
 |----------|----------|---------|---------|
 | `PATTERN_VAULT_BACKEND` | No | `anthropic` | Backend: `anthropic`, `bedrock`, or `bifrost` |
 | `PATTERN_VAULT_DB` | No | `~/.pattern-vault/patterns.db` | SQLite database path |
+| `PATTERN_VAULT_WORKSPACE_ROOTS` | No | current working directory | `os.pathsep`-separated roots that agent file tools may scan/read |
 | `PATTERN_VAULT_MODEL` | No | auto per backend | Override model ID |
 | `ANTHROPIC_API_KEY` | If backend=anthropic | — | Anthropic API key |
 | `AWS_ACCESS_KEY_ID` | If backend=bedrock | — | AWS credentials |
@@ -267,14 +268,12 @@ Add a new branch in `src/client.py` in both `make_client()` and `make_async_clie
 
 ## Testing
 
-No test framework — tests run inline against temp databases.
+Pytest covers the current Stage 1 regression surface around database path resolution, insert/search, chunking, dry-run indexing, and agent file-tool safety.
 
 ```bash
-# Full smoke test (no API key needed)
-python3 -m src.cli stats
-python3 -m src.cli index /some/repo --dry-run
-python3 -c "from src.server.mcp_server import mcp; print(list(mcp._tool_manager._tools.keys()))"
-python3 -c "from src.client import describe_backend; print(describe_backend())"
+uv run --extra dev pytest
+uv run --extra dev ruff check src tests
+python -m compileall src tests
 ```
 
 ## Known limitations and pending work
@@ -288,7 +287,7 @@ python3 -c "from src.client import describe_backend; print(describe_backend())"
 3. **Streaming responses**: Orchestrator waits for full Claude responses. Streaming would improve Chainlit UI latency.
 4. **Parallel chunk extraction**: Batch indexer processes API calls sequentially. Use `asyncio.gather` for parallel extraction within rate limits.
 5. **Conversation summarisation**: Inject mid-conversation summary for long sessions to stay within context limits.
-6. **Proper pytest suite**: Migrate inline tests to pytest with fixtures.
+6. **Broader pytest coverage**: Extend tests beyond the Stage 1 baseline to extractor parsing, MCP tools, UI helpers, schema migrations, and error paths.
 7. **Export/import**: JSON export of vault for sharing across machines.
 8. **Pattern quality scoring**: Replace text `quality_signal` with numeric score for ranking.
 9. **UI browse mode**: Chainlit browse panel by category/tag with syntax-highlighted code.
@@ -303,3 +302,67 @@ Bedrock:        pip install "anthropic[bedrock]"
 More languages: tree-sitter-javascript, tree-sitter-typescript, etc.
 Planned:        sqlite-vec, sentence-transformers
 ```
+
+## 12-rule template
+
+These rules apply to every task in this project unless explicitly overridden.
+Bias: caution over speed on non-trivial work. Use judgment on trivial tasks.
+
+### Rule 1 — Think Before Coding
+State assumptions explicitly. If uncertain, ask rather than guess.
+Present multiple interpretations when ambiguity exists.
+Push back when a simpler approach exists.
+Stop when confused. Name what's unclear.
+
+### Rule 2 — Simplicity First
+Minimum code that solves the problem. Nothing speculative.
+No features beyond what was asked. No abstractions for single-use code.
+Test: would a senior engineer say this is overcomplicated? If yes, simplify.
+
+### Rule 3 — Surgical Changes
+Touch only what you must. Clean up only your own mess.
+Don't "improve" adjacent code, comments, or formatting.
+Don't refactor what isn't broken. Match existing style.
+
+### Rule 4 — Goal-Driven Execution
+Define success criteria. Loop until verified.
+Don't follow steps. Define success and iterate.
+Strong success criteria let you loop independently.
+
+## Rule 5 — Use the model only for judgment calls
+Use me for: classification, drafting, summarization, extraction.
+Do NOT use me for: routing, retries, deterministic transforms.
+If code can answer, code answers.
+
+### Rule 6 — Token budgets are not advisory
+Per-task: 10,000 tokens. Per-session: 90,000 tokens.
+If approaching budget, summarize and start fresh.
+Surface the breach. Do not silently overrun.
+
+### Rule 7 — Surface conflicts, don't average them
+If two patterns contradict, pick one (more recent / more tested).
+Explain why. Flag the other for cleanup.
+Don't blend conflicting patterns.
+
+### Rule 8 — Read before you write
+Before adding code, read exports, immediate callers, shared utilities.
+"Looks orthogonal" is dangerous. If unsure why code is structured a way, ask.
+
+### Rule 9 — Tests verify intent, not just behavior
+Tests must encode WHY behavior matters, not just WHAT it does.
+A test that can't fail when business logic changes is wrong.
+
+### Rule 10 — Checkpoint after every significant step
+Summarize what was done, what's verified, what's left.
+Don't continue from a state you can't describe back.
+If you lose track, stop and restate.
+
+### Rule 11 — Match the codebase's conventions, even if you disagree
+Conformance > taste inside the codebase.
+If you genuinely think a convention is harmful, surface it. Don't fork silently.
+
+### Rule 12 — Fail loud and document update
+"Completed" is wrong if anything was skipped silently.
+"Tests pass" is wrong if any were skipped.
+Default to surfacing uncertainty, not hiding it.
+After every change or decision update relevant document
