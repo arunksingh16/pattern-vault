@@ -479,8 +479,9 @@
     {"id": "claude_code", "lane": "actors", "name": "Claude Code", "detail": "MCP client", "role": "Calls Pattern Vault tools through the MCP server.", "order": 2},
     {"id": "repo", "lane": "actors", "name": "Source Repo", "detail": "/path/to/repo", "role": "Repository being scanned, parsed, or analysed.", "order": 3},
     {"id": "cli", "lane": "surfaces", "name": "CLI", "detail": "src/cli.py", "role": "Commands: index, search, stats, chat, serve.", "order": 1},
-    {"id": "chainlit", "lane": "surfaces", "name": "Chainlit UI", "detail": "src/ui/app.py", "role": "Browser chat, saved pattern browsing, tool-call steps, MCP status.", "order": 2},
-    {"id": "mcp", "lane": "surfaces", "name": "MCP Server", "detail": "src/server/mcp_server.py", "role": "FastMCP tools for search, get, add, stats, tags, insights, reindex.", "order": 3},
+    {"id": "chainlit", "lane": "surfaces", "name": "Chainlit UI", "detail": "src/ui/app.py", "role": "Legacy browser chat with tool-call steps and MCP status.", "order": 2},
+    {"id": "react_ui", "lane": "surfaces", "name": "React UI + BFF", "detail": "web/ + src/api/", "role": "Vite+React frontend. FastAPI BFF with SSE chat, history, insights, workspace, patterns APIs.", "order": 3},
+    {"id": "mcp", "lane": "surfaces", "name": "MCP Server", "detail": "src/server/mcp_server.py", "role": "FastMCP tools for search, get, add, stats, tags, insights, reindex.", "order": 4},
     {"id": "orchestrator", "lane": "agent", "name": "Agent Orchestrator", "detail": "src/agent/orchestrator.py", "role": "Claude tool-use loop with a max of 15 rounds per turn.", "order": 1},
     {"id": "agent_tools", "lane": "agent", "name": "Agent Tools", "detail": "src/agent/tools.py", "role": "scan_directory, read_file, parse_symbols, save_pattern, save_insight, search_patterns, vault_stats.", "order": 2},
     {"id": "workspace_guard", "lane": "agent", "name": "Workspace Guards", "detail": "PATTERN_VAULT_WORKSPACE_ROOTS", "role": "Limits file tools to configured roots and blocks sensitive paths.", "order": 3},
@@ -488,9 +489,8 @@
     {"id": "chunker", "lane": "indexing", "name": "Scanner + Chunker", "detail": "src/indexer/chunker.py", "role": "Finds source files and extracts functions/classes using tree-sitter.", "order": 2},
     {"id": "extractor", "lane": "indexing", "name": "Pattern Extractor", "detail": "src/indexer/extractor.py", "role": "Batches chunks and asks Claude to classify reusable patterns.", "order": 3},
     {"id": "store", "lane": "storage", "name": "Store API", "detail": "src/store/db.py", "role": "SQLite schema, CRUD, FTS search, content-hash deduplication.", "order": 1},
-    {"id": "sqlite", "lane": "storage", "name": "SQLite DB", "detail": "~/.pattern-vault/patterns.db", "role": "patterns, chunks, repo_insights, db_meta.", "order": 2},
+    {"id": "sqlite", "lane": "storage", "name": "SQLite DB", "detail": "~/.pattern-vault/patterns.db", "role": "patterns, chunks, repo_insights, chat_sessions, chat_messages, db_meta.", "order": 2},
     {"id": "fts", "lane": "storage", "name": "FTS5 Index", "detail": "patterns_fts", "role": "Full-text search over names, summaries, tags, categories, languages.", "order": 3},
-    {"id": "history", "lane": "storage", "name": "Chat History", "detail": "~/.pattern-vault/chat-history/*.jsonl", "role": "Best-effort JSONL transcript of UI messages, tool calls, and results.", "order": 4},
     {"id": "client_factory", "lane": "model", "name": "Client Factory", "detail": "src/client.py", "role": "Selects Anthropic, Bedrock, or Bifrost from environment variables.", "order": 1},
     {"id": "anthropic", "lane": "external", "name": "Anthropic API", "detail": "ANTHROPIC_API_KEY", "role": "Direct Claude backend.", "order": 1},
     {"id": "bedrock", "lane": "external", "name": "AWS Bedrock", "detail": "PATTERN_VAULT_BACKEND=bedrock", "role": "Claude through AnthropicBedrock.", "order": 2},
@@ -602,7 +602,7 @@
         {"from": "agent_tools", "to": "chunker", "label": "scan / parse"},
         {"from": "agent_tools", "to": "store", "label": "search / save / stats"},
         {"from": "store", "to": "sqlite", "label": "read/write vault"},
-        {"from": "chainlit", "to": "history", "label": "JSONL events"}
+        {"from": "chainlit", "to": "sqlite", "label": "chat history (SQLite)"}
       ],
       "steps": [
         {"node": "orchestrator", "title": "Conversation is sent to Claude", "body": "The system prompt tells Claude to inspect repos, call tools proactively, and save only genuinely reusable patterns.", "payload": "SYSTEM_PROMPT + messages + TOOL_DEFINITIONS"},
@@ -647,13 +647,13 @@
         {"from": "sqlite", "to": "store", "label": "rows"},
         {"from": "store", "to": "chainlit", "label": "formatted markdown"},
         {"from": "chainlit", "to": "mcp", "label": "local tool registry introspection"},
-        {"from": "chainlit", "to": "history", "label": "session JSONL"}
+        {"from": "chainlit", "to": "sqlite", "label": "session history"}
       ],
       "steps": [
         {"node": "chainlit", "title": "Welcome actions shortcut common tasks", "body": "The UI exposes buttons for saved patterns, history path, and MCP server status before the user types anything.", "payload": "show_patterns | show_history_path | show_mcp_status"},
         {"node": "store", "title": "Recent patterns are loaded", "body": "The UI queries the newest pattern metadata and renders a markdown table with action buttons for the first few IDs.", "payload": "ORDER BY updated_at DESC, id DESC LIMIT 25"},
         {"node": "sqlite", "title": "Opening a pattern fetches chunks", "body": "get_pattern joins pattern metadata with stored code chunks so the UI can render full source details.", "payload": "chunks: [{id, code_text, chunk_type}]"},
-        {"node": "history", "title": "Session events are appended", "body": "Messages, UI actions, tool calls, and tool results are written as JSONL for later audit or import.", "payload": "~/.pattern-vault/chat-history/<session>.jsonl"}
+        {"node": "sqlite", "title": "Session events are persisted", "body": "Chat messages, tool calls, and results are stored in chat_sessions and chat_messages tables in SQLite for history browsing.", "payload": "chat_sessions + chat_messages tables"}
       ]
     },
     {
@@ -862,8 +862,24 @@
       const startY = a.y + 26;
       const endX = b.x;
       const endY = b.y + 26;
-      const sameLane = Math.abs(startX - endX) < 30;
-      const bend = sameLane ? 58 + (edgeIndex % 3) * 18 : Math.max(50, Math.abs(endX - startX) * 0.46);
+
+      const dx = Math.abs(endX - startX);
+      const dy = endY - startY;
+      const sameLane = dx < 60;
+
+      if (sameLane) {
+        // Vertical connection: use a gentle S-curve with horizontal offset
+        const offset = 30 + (edgeIndex % 3) * 12;
+        const midY = (startY + endY) / 2;
+        if (dy > 0) {
+          return `M ${a.x + a.w / 2} ${a.y + 52} C ${a.x + a.w / 2 + offset} ${midY}, ${b.x + b.w / 2 - offset} ${midY}, ${b.x + b.w / 2} ${b.y}`;
+        } else {
+          return `M ${a.x + a.w / 2} ${a.y} C ${a.x + a.w / 2 + offset} ${midY}, ${b.x + b.w / 2 - offset} ${midY}, ${b.x + b.w / 2} ${b.y + 52}`;
+        }
+      }
+
+      // Cross-lane: horizontal cubic bezier with controlled bend
+      const bend = Math.min(80, Math.max(40, dx * 0.35));
 
       if (endX >= startX) {
         return `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}`;
@@ -875,6 +891,14 @@
       const a = state.positions.get(from);
       const b = state.positions.get(to);
       if (!a || !b) return { x: 0, y: 0 };
+      const dx = Math.abs((a.x + a.w) - b.x);
+      const sameLane = dx < 60;
+      if (sameLane) {
+        return {
+          x: a.x + a.w / 2 + 35,
+          y: (a.y + b.y) / 2 + 26
+        };
+      }
       const startX = a.x + a.w;
       const endX = b.x;
       const reverse = endX < startX;

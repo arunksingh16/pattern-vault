@@ -70,7 +70,11 @@ python -m src.cli search "retry with backoff"
 # Interactive analysis (terminal)
 python -m src.cli chat
 
-# Interactive analysis (browser)
+# Interactive analysis (browser) — NEW custom UI
+cd web && npm run dev                    # frontend at :5173
+uvicorn src.api.main:app --port 8001     # backend API
+
+# Legacy Chainlit UI (still works)
 chainlit run src/ui/app.py
 
 # Check what's in the vault
@@ -192,8 +196,21 @@ src/
 ├── agent/
 │   ├── tools.py        # 7 agent tools for interactive analysis
 │   └── orchestrator.py # Claude tool-use agentic loop
+├── api/                # FastAPI backend-for-frontend (React UI)
+│   ├── main.py         # App, CORS, lifespan
+│   ├── deps.py         # DB dependency injection
+│   └── routes/         # patterns.py (CRUD+search), stats.py (health)
 ├── server/mcp_server.py # FastMCP server (8 tools)
-└── ui/app.py           # Chainlit browser chat UI
+└── ui/app.py           # Chainlit browser chat UI (legacy)
+
+web/                    # React frontend (Vite + React 19 + TypeScript)
+├── src/
+│   ├── App.tsx         # Root layout with multi-pane grid
+│   ├── api/            # Typed fetch client + TanStack Query hooks
+│   ├── panels/         # PatternBrowser, PatternInspector, ChatPanel
+│   ├── components/     # GlassPanel, SearchBar, CodeBlock, Chip, etc.
+│   └── stores/         # Zustand UI state
+└── tailwind.config.ts  # DESIGN.md tokens → Tailwind
 ```
 
 See `CLAUDE.md` for full developer documentation, architecture diagrams, data flow details, testing guide, and the complete list of pending improvements.

@@ -121,6 +121,7 @@ async def run_agent_turn_async(
     api_key: Optional[str] = None,
     model: Optional[str] = None,
     db_path: Optional[Path] = None,
+    extra_roots: Optional[list[Path]] = None,
 ):
     """
     Async version of run_agent_turn.
@@ -176,7 +177,7 @@ async def run_agent_turn_async(
 
         tool_results = []
         for block in tool_use_blocks:
-            result = execute_tool(block.name, block.input, db_path=db_path)
+            result = execute_tool(block.name, block.input, db_path=db_path, extra_roots=extra_roots)
             yield {"type": "tool_result", "name": block.name, "result": result[:500] + "..." if len(result) > 500 else result}
             tool_results.append({
                 "type": "tool_result",

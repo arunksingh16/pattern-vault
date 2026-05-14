@@ -8,8 +8,8 @@ A personal code pattern knowledge base. Point it at any repo, it extracts reusab
 ┌─────────────────────────────────────────────────────────────────────┐
 │  ACCESS LAYER                                                       │
 │  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────────┐  │
-│  │ MCP Server   │  │ Chainlit Chat UI │  │ CLI                   │  │
-│  │ (FastMCP)    │  │ (browser-based)  │  │ index/search/chat/    │  │
+│  │ MCP Server   │  │ React UI + BFF   │  │ CLI                   │  │
+│  │ (FastMCP)    │  │ (Vite + FastAPI) │  │ index/search/chat/    │  │
 │  │ 8 tools      │  │ agentic loop     │  │ stats/serve           │  │
 │  └──────┬───────┘  └────────┬─────────┘  └──────────┬────────────┘  │
 │         │                   │                       │               │
@@ -59,32 +59,63 @@ pattern-vault/
 ├── pyproject.toml              # project metadata + dependencies
 ├── CLAUDE.md                   # ← you are here
 ├── README.md                   # user-facing docs
+├── DESIGN.md                   # UI design tokens (colors, typography, spacing, components)
+├── HANDOFF.md                  # Agent handoff document for UI redesign progress
 ├── .mcp.json                   # MCP config for Claude Code
 ├── .gitignore
 ├── .chainlit/
 │   └── config.toml             # Chainlit UI settings
-└── src/
-    ├── __init__.py
-    ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost)
-    ├── cli.py                  # CLI entry point: index, search, stats, chat, serve
-    ├── store/
-    │   ├── __init__.py
-    │   └── db.py               # ★ SQLite schema, CRUD, FTS5 search, dedup, stats
-    ├── indexer/
-    │   ├── __init__.py
-    │   ├── chunker.py          # ★ Tree-sitter AST parsing, file scanning, LANG_MAP
-    │   ├── extractor.py        # ★ Claude extraction prompt + sync/async API calls
-    │   └── batch.py            # Batch pipeline: scan → chunk → extract → store
-    ├── agent/
-    │   ├── __init__.py
-    │   ├── tools.py            # ★ 7 tool definitions + implementations for agentic loop
-    │   └── orchestrator.py     # ★ Claude tool-use loop (sync + async generators)
-    ├── server/
-    │   ├── __init__.py
-    │   └── mcp_server.py       # FastMCP server — 8 tools exposed to Claude Code
-    └── ui/
-        ├── __init__.py
-        └── app.py              # Chainlit chat UI — wires orchestrator to browser
+├── src/
+│   ├── __init__.py
+│   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost)
+│   ├── cli.py                  # CLI entry point: index, search, stats, chat, serve
+│   ├── store/
+│   │   ├── __init__.py
+│   │   └── db.py               # ★ SQLite schema, CRUD, FTS5 search, dedup, stats
+│   ├── indexer/
+│   │   ├── __init__.py
+│   │   ├── chunker.py          # ★ Tree-sitter AST parsing, file scanning, LANG_MAP
+│   │   ├── extractor.py        # ★ Claude extraction prompt + sync/async API calls
+│   │   └── batch.py            # Batch pipeline: scan → chunk → extract → store
+│   ├── agent/
+│   │   ├── __init__.py
+│   │   ├── tools.py            # ★ 7 tool definitions + implementations for agentic loop
+│   │   └── orchestrator.py     # ★ Claude tool-use loop (sync + async generators)
+│   ├── server/
+│   │   ├── __init__.py
+│   │   └── mcp_server.py       # FastMCP server — 8 tools exposed to Claude Code
+│   ├── api/                    # ★ FastAPI BFF for the React frontend
+│   │   ├── __init__.py
+│   │   ├── main.py             # App, CORS, lifespan, router mounts
+│   │   ├── deps.py             # DB connection dependency injection
+│   │   └── routes/
+│   │       ├── patterns.py     # CRUD + FTS search for patterns
+│   │       ├── stats.py        # Health check, vault stats, categories, tags
+│   │       └── chat.py         # ★ POST /api/chat → SSE stream from orchestrator
+│   └── ui/
+│       ├── __init__.py
+│       └── app.py              # Chainlit chat UI (legacy, still works)
+└── web/                        # ★ React frontend (Vite + React 19 + TypeScript)
+    ├── package.json
+    ├── vite.config.ts          # Proxies /api to :8001, @/ path alias
+    ├── tailwind.config.ts      # DESIGN.md tokens mapped to Tailwind
+    ├── tsconfig.json
+    ├── index.html
+    └── src/
+        ├── main.tsx            # Entry: QueryClient, font imports
+        ├── App.tsx             # Root layout: Header + SideNav + PanelGrid
+        ├── design-tokens.css   # Tailwind directives + glass utilities
+        ├── api/
+        │   ├── client.ts       # Typed fetch wrapper + API interface
+        │   └── hooks/
+        │       ├── usePatterns.ts  # TanStack Query hooks
+        │       └── useChat.ts     # ★ SSE consumption hook for chat
+        ├── stores/
+        │   ├── uiStore.ts      # Zustand: active view, sidebar, selection
+        │   └── chatStore.ts    # ★ Zustand: messages, streaming, tool calls
+        ├── components/         # GlassPanel, SideNav, SearchBar, CodeBlock, Chip, ToolStep
+        ├── panels/             # PatternBrowser, PatternInspector, ChatPanel
+        └── layouts/PanelGrid.tsx  # CSS Grid multi-pane layout
 ```
 
 Files marked ★ are the core files you'll modify most.
@@ -190,7 +221,7 @@ export BIFROST_URL=http://localhost:8080/anthropic
 # Direct Anthropic:
 export ANTHROPIC_API_KEY=sk-ant-...
 
-# ── Commands ──
+# ── CLI commands ──
 python -m src.cli index /path/to/repo --dry-run    # scan+chunk only, no API
 python -m src.cli index /path/to/repo               # full index
 python -m src.cli search "retry backoff"             # search patterns
@@ -198,8 +229,14 @@ python -m src.cli search "auth" --category api_pattern --language python
 python -m src.cli stats                              # vault statistics
 python -m src.cli chat                               # terminal agentic chat
 
+# ── Custom React UI (primary) ──
+uvicorn src.api.main:app --port 8001 --reload       # backend API
+cd web && npm run dev                                # frontend at :5173 (proxies /api to :8001)
+
+# ── Legacy Chainlit UI (still works) ──
 chainlit run src/ui/app.py                           # browser chat at :8000
 
+# ── MCP server ──
 python src/server/mcp_server.py                      # MCP server (stdio)
 python -m src.cli serve --transport http --port 8000  # MCP server (HTTP)
 ```
@@ -303,7 +340,7 @@ More languages: tree-sitter-javascript, tree-sitter-typescript, etc.
 Planned:        sqlite-vec, sentence-transformers
 ```
 
-## 12-rule template
+## 12-rule template for agents to follow
 
 These rules apply to every task in this project unless explicitly overridden.
 Bias: caution over speed on non-trivial work. Use judgment on trivial tasks.

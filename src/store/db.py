@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-DB_VERSION = 1
+DB_VERSION = 5
 DEFAULT_DB_PATH = Path.home() / ".pattern-vault" / "patterns.db"
 DB_PATH_ENV = "PATTERN_VAULT_DB"
 
@@ -59,6 +59,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             line_start INTEGER DEFAULT NULL,
             line_end INTEGER DEFAULT NULL,
             content_hash TEXT NOT NULL,
+            user_notes TEXT DEFAULT NULL,
+            source_url TEXT DEFAULT NULL,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL
         );
@@ -85,41 +87,45 @@ def init_db(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_patterns_hash ON patterns(content_hash);
         CREATE INDEX IF NOT EXISTS idx_chunks_pattern ON chunks(pattern_id);
         CREATE INDEX IF NOT EXISTS idx_insights_repo ON repo_insights(repo_path);
+
+        CREATE TABLE IF NOT EXISTS chat_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            content TEXT NOT NULL,
+            tool_calls TEXT NOT NULL DEFAULT '[]',
+            created_at REAL NOT NULL,
+            FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id);
+
+        CREATE TABLE IF NOT EXISTS cloned_repos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner TEXT NOT NULL,
+            repo TEXT NOT NULL,
+            local_path TEXT NOT NULL,
+            source_url_base TEXT NOT NULL,
+            branch TEXT NOT NULL DEFAULT 'main',
+            cloned_at REAL NOT NULL,
+            UNIQUE(owner, repo)
+        );
     """)
 
     # FTS5 virtual table for full-text search
     # Check if it exists first (can't use IF NOT EXISTS with virtual tables in all versions)
-    cursor = conn.execute(
+    fts_cursor = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='patterns_fts'"
     )
-    if cursor.fetchone() is None:
-        conn.execute("""
-            CREATE VIRTUAL TABLE patterns_fts USING fts5(
-                name, summary, tags, category, language,
-                content=patterns,
-                content_rowid=id,
-                tokenize='porter unicode61'
-            )
-        """)
-        # Triggers to keep FTS in sync
-        conn.executescript("""
-            CREATE TRIGGER IF NOT EXISTS patterns_ai AFTER INSERT ON patterns BEGIN
-                INSERT INTO patterns_fts(rowid, name, summary, tags, category, language)
-                VALUES (new.id, new.name, new.summary, new.tags, new.category, new.language);
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS patterns_ad AFTER DELETE ON patterns BEGIN
-                INSERT INTO patterns_fts(patterns_fts, rowid, name, summary, tags, category, language)
-                VALUES ('delete', old.id, old.name, old.summary, old.tags, old.category, old.language);
-            END;
-
-            CREATE TRIGGER IF NOT EXISTS patterns_au AFTER UPDATE ON patterns BEGIN
-                INSERT INTO patterns_fts(patterns_fts, rowid, name, summary, tags, category, language)
-                VALUES ('delete', old.id, old.name, old.summary, old.tags, old.category, old.language);
-                INSERT INTO patterns_fts(rowid, name, summary, tags, category, language)
-                VALUES (new.id, new.name, new.summary, new.tags, new.category, new.language);
-            END;
-        """)
+    if fts_cursor.fetchone() is None:
+        _create_fts_and_triggers(conn)
 
     conn.execute("""
         CREATE TABLE IF NOT EXISTS db_meta (
@@ -127,10 +133,108 @@ def init_db(conn: sqlite3.Connection) -> None:
             value TEXT NOT NULL
         )
     """)
+
+    # Run incremental migrations based on stored version
+    stored = conn.execute(
+        "SELECT value FROM db_meta WHERE key = 'version'"
+    ).fetchone()
+    stored_version = int(stored["value"]) if stored else 1
+
+    if stored_version < 3:
+        _migrate_to_v3(conn)
+
+    if stored_version < 4:
+        _migrate_to_v4(conn)
+
+    if stored_version < 5:
+        _migrate_to_v5(conn)
+
     conn.execute(
         "INSERT OR REPLACE INTO db_meta (key, value) VALUES ('version', ?)",
         (str(DB_VERSION),),
     )
+    conn.commit()
+
+
+def _create_fts_and_triggers(conn: sqlite3.Connection) -> None:
+    """Create the FTS5 virtual table and its sync triggers (includes user_notes)."""
+    conn.execute("""
+        CREATE VIRTUAL TABLE patterns_fts USING fts5(
+            name, summary, tags, category, language, user_notes,
+            content=patterns,
+            content_rowid=id,
+            tokenize='porter unicode61'
+        )
+    """)
+    conn.executescript("""
+        CREATE TRIGGER IF NOT EXISTS patterns_ai AFTER INSERT ON patterns BEGIN
+            INSERT INTO patterns_fts(rowid, name, summary, tags, category, language, user_notes)
+            VALUES (new.id, new.name, new.summary, new.tags, new.category, new.language, new.user_notes);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS patterns_ad AFTER DELETE ON patterns BEGIN
+            INSERT INTO patterns_fts(patterns_fts, rowid, name, summary, tags, category, language, user_notes)
+            VALUES ('delete', old.id, old.name, old.summary, old.tags, old.category, old.language, old.user_notes);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS patterns_au AFTER UPDATE ON patterns BEGIN
+            INSERT INTO patterns_fts(patterns_fts, rowid, name, summary, tags, category, language, user_notes)
+            VALUES ('delete', old.id, old.name, old.summary, old.tags, old.category, old.language, old.user_notes);
+            INSERT INTO patterns_fts(rowid, name, summary, tags, category, language, user_notes)
+            VALUES (new.id, new.name, new.summary, new.tags, new.category, new.language, new.user_notes);
+        END;
+    """)
+
+
+def _migrate_to_v5(conn: sqlite3.Connection) -> None:
+    """Migrate DB from v4 → v5: add source_repo to chat_sessions."""
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
+    if "source_repo" not in cols:
+        conn.execute("ALTER TABLE chat_sessions ADD COLUMN source_repo TEXT DEFAULT NULL")
+    conn.commit()
+
+
+def _migrate_to_v4(conn: sqlite3.Connection) -> None:
+    """Migrate DB from v3 → v4: add source_url to patterns + cloned_repos table."""
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(patterns)").fetchall()]
+    if "source_url" not in cols:
+        conn.execute("ALTER TABLE patterns ADD COLUMN source_url TEXT DEFAULT NULL")
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS cloned_repos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner TEXT NOT NULL,
+            repo TEXT NOT NULL,
+            local_path TEXT NOT NULL,
+            source_url_base TEXT NOT NULL,
+            branch TEXT NOT NULL DEFAULT 'main',
+            cloned_at REAL NOT NULL,
+            UNIQUE(owner, repo)
+        );
+    """)
+    conn.commit()
+
+
+def _migrate_to_v3(conn: sqlite3.Connection) -> None:
+    """Migrate DB from v2 → v3: add user_notes column + rebuild FTS to include it."""
+    # Add column if it doesn't exist yet
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(patterns)").fetchall()]
+    if "user_notes" not in cols:
+        conn.execute("ALTER TABLE patterns ADD COLUMN user_notes TEXT DEFAULT NULL")
+
+    # Rebuild FTS: drop triggers, drop table, recreate with user_notes, repopulate
+    conn.executescript("""
+        DROP TRIGGER IF EXISTS patterns_ai;
+        DROP TRIGGER IF EXISTS patterns_ad;
+        DROP TRIGGER IF EXISTS patterns_au;
+        DROP TABLE IF EXISTS patterns_fts;
+    """)
+    _create_fts_and_triggers(conn)
+
+    # Repopulate FTS from existing patterns
+    conn.execute("""
+        INSERT INTO patterns_fts(rowid, name, summary, tags, category, language, user_notes)
+        SELECT id, name, summary, tags, category, language, user_notes FROM patterns
+    """)
     conn.commit()
 
 
@@ -151,6 +255,7 @@ def insert_pattern(
     line_end: Optional[int] = None,
     chunk_type: str = "implementation",
     embedding: Optional[bytes] = None,
+    source_url: Optional[str] = None,
 ) -> int:
     """Insert a pattern and its code chunk. Returns the pattern ID."""
     now = time.time()
@@ -168,12 +273,12 @@ def insert_pattern(
         """INSERT INTO patterns
            (name, category, language, tags, summary, quality_signal,
             source_repo, source_file, line_start, line_end,
-            content_hash, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            content_hash, source_url, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             name, category, language, tags_json, summary, quality_signal,
             source_repo, source_file, line_start, line_end,
-            chash, now, now,
+            chash, source_url, now, now,
         ),
     )
     pattern_id = cursor.lastrowid
@@ -203,6 +308,80 @@ def insert_insight(
     return cursor.lastrowid
 
 
+def list_insights(
+    conn: sqlite3.Connection, limit: int = 50, offset: int = 0
+) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, repo_path, insight_text, tags, created_at FROM repo_insights ORDER BY created_at DESC LIMIT ? OFFSET ?",
+        (limit, offset),
+    ).fetchall()
+    results = []
+    for row in rows:
+        r = dict(row)
+        r["tags"] = json.loads(r["tags"])
+        results.append(r)
+    return results
+
+
+def get_insight(conn: sqlite3.Connection, insight_id: int) -> Optional[dict]:
+    row = conn.execute(
+        "SELECT id, repo_path, insight_text, tags, created_at FROM repo_insights WHERE id = ?",
+        (insight_id,),
+    ).fetchone()
+    if not row:
+        return None
+    r = dict(row)
+    r["tags"] = json.loads(r["tags"])
+    return r
+
+
+def delete_insight(conn: sqlite3.Connection, insight_id: int) -> bool:
+    cursor = conn.execute("DELETE FROM repo_insights WHERE id = ?", (insight_id,))
+    conn.commit()
+    return cursor.rowcount > 0
+
+
+# ── Cloned repos registry ─────────────────────────────────────
+
+def upsert_cloned_repo(
+    conn: sqlite3.Connection,
+    owner: str,
+    repo: str,
+    local_path: str,
+    source_url_base: str,
+    branch: str = "main",
+) -> None:
+    """Insert or replace a cloned repo entry."""
+    conn.execute(
+        """INSERT INTO cloned_repos (owner, repo, local_path, source_url_base, branch, cloned_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(owner, repo) DO UPDATE SET
+               local_path=excluded.local_path,
+               source_url_base=excluded.source_url_base,
+               branch=excluded.branch,
+               cloned_at=excluded.cloned_at""",
+        (owner, repo, local_path, source_url_base, branch, time.time()),
+    )
+    conn.commit()
+
+
+def list_cloned_repos(conn: sqlite3.Connection) -> list[dict]:
+    """Return all cloned repos ordered by most recently cloned."""
+    rows = conn.execute(
+        "SELECT id, owner, repo, local_path, source_url_base, branch, cloned_at FROM cloned_repos ORDER BY cloned_at DESC"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_cloned_repo(conn: sqlite3.Connection, owner: str, repo: str) -> Optional[dict]:
+    """Look up a specific cloned repo by owner/repo."""
+    row = conn.execute(
+        "SELECT id, owner, repo, local_path, source_url_base, branch, cloned_at FROM cloned_repos WHERE owner=? AND repo=?",
+        (owner, repo),
+    ).fetchone()
+    return dict(row) if row else None
+
+
 def get_pattern(conn: sqlite3.Connection, pattern_id: int) -> Optional[dict]:
     """Get a single pattern with its code chunks."""
     row = conn.execute(
@@ -212,6 +391,8 @@ def get_pattern(conn: sqlite3.Connection, pattern_id: int) -> Optional[dict]:
         return None
     result = dict(row)
     result["tags"] = json.loads(result["tags"])
+    result.setdefault("user_notes", None)
+    result.setdefault("source_url", None)
     chunks = conn.execute(
         "SELECT id, code_text, chunk_type FROM chunks WHERE pattern_id = ?",
         (pattern_id,),
@@ -235,6 +416,7 @@ def update_pattern(
     line_start: Optional[int] = None,
     line_end: Optional[int] = None,
     code_text: Optional[str] = None,
+    user_notes: Optional[str] = None,
 ) -> bool:
     """Update pattern metadata and optionally replace its primary code chunk."""
     existing = conn.execute(
@@ -254,6 +436,7 @@ def update_pattern(
         "source_file": source_file,
         "line_start": line_start,
         "line_end": line_end,
+        "user_notes": user_notes,
     }
     updates = [(key, value) for key, value in fields.items() if value is not None]
 
@@ -283,6 +466,7 @@ def update_pattern(
                 line_start = COALESCE(?, line_start),
                 line_end = COALESCE(?, line_end),
                 content_hash = COALESCE(?, content_hash),
+                user_notes = COALESCE(?, user_notes),
                 updated_at = ?
             WHERE id = ?
             """,
@@ -298,6 +482,7 @@ def update_pattern(
                 fields["line_start"],
                 fields["line_end"],
                 fields.get("content_hash"),
+                fields["user_notes"],
                 time.time(),
                 pattern_id,
             ),
@@ -414,3 +599,74 @@ def get_stats(conn: sqlite3.Connection) -> dict:
         "categories": categories,
         "languages": languages,
     }
+
+
+# ── Chat history ─────────────────────────────────────────────────
+
+def create_session(
+    conn: sqlite3.Connection,
+    title: Optional[str] = None,
+    source_repo: Optional[str] = None,
+) -> int:
+    now = time.time()
+    cursor = conn.execute(
+        "INSERT INTO chat_sessions (title, source_repo, created_at, updated_at) VALUES (?, ?, ?, ?)",
+        (title, source_repo, now, now),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def append_message(
+    conn: sqlite3.Connection,
+    session_id: int,
+    role: str,
+    content: str,
+    tool_calls: Optional[list] = None,
+) -> int:
+    now = time.time()
+    cursor = conn.execute(
+        "INSERT INTO chat_messages (session_id, role, content, tool_calls, created_at) VALUES (?, ?, ?, ?, ?)",
+        (session_id, role, content, json.dumps(tool_calls or []), now),
+    )
+    conn.execute(
+        "UPDATE chat_sessions SET updated_at = ? WHERE id = ?",
+        (now, session_id),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def list_sessions(conn: sqlite3.Connection, limit: int = 50) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, title, source_repo, created_at, updated_at FROM chat_sessions ORDER BY updated_at DESC LIMIT ?",
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_latest_session_for_repo(conn: sqlite3.Connection, source_repo: str) -> Optional[dict]:
+    row = conn.execute(
+        "SELECT id, title, source_repo, created_at, updated_at FROM chat_sessions WHERE source_repo = ? ORDER BY updated_at DESC LIMIT 1",
+        (source_repo,),
+    ).fetchone()
+    return dict(row) if row else None
+
+
+def get_session_messages(conn: sqlite3.Connection, session_id: int) -> list[dict]:
+    rows = conn.execute(
+        "SELECT id, role, content, tool_calls, created_at FROM chat_messages WHERE session_id = ? ORDER BY created_at",
+        (session_id,),
+    ).fetchall()
+    results = []
+    for row in rows:
+        r = dict(row)
+        r["tool_calls"] = json.loads(r["tool_calls"])
+        results.append(r)
+    return results
+
+
+def delete_session(conn: sqlite3.Connection, session_id: int) -> bool:
+    cursor = conn.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
+    conn.commit()
+    return cursor.rowcount > 0

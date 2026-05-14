@@ -7,6 +7,9 @@ Each tool is a simple Python function that the orchestrator can call.
 
 import json
 import os
+import re
+import shutil
+import subprocess  # nosec B404
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +21,7 @@ from ..store.db import (
     insert_insight,
     search_fts,
     get_stats,
+    upsert_cloned_repo,
 )
 
 WORKSPACE_ROOTS_ENV = "PATTERN_VAULT_WORKSPACE_ROOTS"
@@ -55,6 +59,16 @@ def _get_conn(db_path: Optional[Path] = None):
     return conn
 
 
+# Strict GitHub URL pattern — only plain repo URLs, no subpaths
+_GITHUB_URL_RE = re.compile(
+    r'^https://github\.com/([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+?)(\.git)?/?$'
+)
+
+# .temp/ lives next to src/ in the project root
+_PROJECT_ROOT = Path(__file__).parents[2]
+CLONE_BASE_DIR = _PROJECT_ROOT / ".temp"
+
+
 def get_workspace_roots() -> list[Path]:
     """Return configured roots that agent file tools are allowed to inspect."""
     raw_roots = os.environ.get(WORKSPACE_ROOTS_ENV)
@@ -82,9 +96,13 @@ def _json_error(message: str) -> str:
     return json.dumps({"error": message})
 
 
-def _validate_tool_path(path: str, expect_file: bool) -> tuple[Optional[Path], Optional[str]]:
+def _validate_tool_path(
+    path: str,
+    expect_file: bool,
+    extra_roots: Optional[list[Path]] = None,
+) -> tuple[Optional[Path], Optional[str]]:
     p = Path(path).expanduser().resolve()
-    roots = get_workspace_roots()
+    roots = get_workspace_roots() + (extra_roots or [])
 
     if not _is_under_root(p, roots):
         root_list = ", ".join(str(root) for root in roots)
@@ -109,8 +127,10 @@ def _validate_tool_path(path: str, expect_file: bool) -> tuple[Optional[Path], O
     return p, None
 
 
-def _validate_source_file(path: str) -> tuple[Optional[Path], Optional[str]]:
-    p, error = _validate_tool_path(path, expect_file=True)
+def _validate_source_file(
+    path: str, extra_roots: Optional[list[Path]] = None
+) -> tuple[Optional[Path], Optional[str]]:
+    p, error = _validate_tool_path(path, expect_file=True, extra_roots=extra_roots)
     if error or p is None:
         return None, error
 
@@ -219,6 +239,20 @@ TOOL_DEFINITIONS = [
             "properties": {},
         },
     },
+    {
+        "name": "clone_github_repo",
+        "description": "Clone a public GitHub repository to the local .temp/ directory for analysis. Only accepts plain https://github.com/<owner>/<repo> URLs. After cloning, use scan_directory on the returned local_path to explore the repo.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "url": {
+                    "type": "string",
+                    "description": "Public GitHub repo URL, e.g. https://github.com/owner/repo",
+                },
+            },
+            "required": ["url"],
+        },
+    },
 ]
 
 
@@ -228,15 +262,17 @@ def execute_tool(
     tool_name: str,
     tool_input: dict,
     db_path: Optional[Path] = None,
+    extra_roots: Optional[list[Path]] = None,
 ) -> str:
     """Execute an agent tool and return the result as a string."""
+    _extra = extra_roots or []
     try:
         if tool_name == "scan_directory":
-            return _tool_scan_directory(tool_input["path"])
+            return _tool_scan_directory(tool_input["path"], _extra)
         elif tool_name == "read_file":
-            return _tool_read_file(tool_input["path"], tool_input.get("max_lines", 200))
+            return _tool_read_file(tool_input["path"], tool_input.get("max_lines", 200), _extra)
         elif tool_name == "parse_symbols":
-            return _tool_parse_symbols(tool_input["path"])
+            return _tool_parse_symbols(tool_input["path"], _extra)
         elif tool_name == "save_pattern":
             return _tool_save_pattern(tool_input, db_path)
         elif tool_name == "save_insight":
@@ -245,14 +281,16 @@ def execute_tool(
             return _tool_search_patterns(tool_input, db_path)
         elif tool_name == "vault_stats":
             return _tool_vault_stats(db_path)
+        elif tool_name == "clone_github_repo":
+            return _tool_clone_github_repo(tool_input["url"], db_path)
         else:
             return json.dumps({"error": f"Unknown tool: {tool_name}"})
     except Exception as e:
         return json.dumps({"error": f"{tool_name} failed: {str(e)}"})
 
 
-def _tool_scan_directory(path: str) -> str:
-    root, error = _validate_tool_path(path, expect_file=False)
+def _tool_scan_directory(path: str, extra_roots: Optional[list[Path]] = None) -> str:
+    root, error = _validate_tool_path(path, expect_file=False, extra_roots=extra_roots)
     if error or root is None:
         return _json_error(error or "Invalid directory")
 
@@ -269,8 +307,8 @@ def _tool_scan_directory(path: str) -> str:
     }, indent=2)
 
 
-def _tool_read_file(path: str, max_lines: int = 200) -> str:
-    p, error = _validate_source_file(path)
+def _tool_read_file(path: str, max_lines: int = 200, extra_roots: Optional[list[Path]] = None) -> str:
+    p, error = _validate_source_file(path, extra_roots=extra_roots)
     if error or p is None:
         return _json_error(error or "Invalid file")
 
@@ -292,8 +330,8 @@ def _tool_read_file(path: str, max_lines: int = 200) -> str:
         return json.dumps({"error": f"Failed to read {path}: {e}"})
 
 
-def _tool_parse_symbols(path: str) -> str:
-    p, error = _validate_source_file(path)
+def _tool_parse_symbols(path: str, extra_roots: Optional[list[Path]] = None) -> str:
+    p, error = _validate_source_file(path, extra_roots=extra_roots)
     if error or p is None:
         return _json_error(error or "Invalid file")
 
@@ -364,3 +402,63 @@ def _tool_vault_stats(db_path: Optional[Path] = None) -> str:
         return json.dumps(get_stats(conn), indent=2)
     finally:
         conn.close()
+
+
+def _tool_clone_github_repo(url: str, db_path: Optional[Path] = None) -> str:
+    """Clone a public GitHub repo to .temp/<owner>/<repo>/, register in DB."""
+    match = _GITHUB_URL_RE.match(url.strip())
+    if not match:
+        return _json_error(
+            "Invalid GitHub URL. Only plain public repo URLs are accepted: "
+            "https://github.com/<owner>/<repo>"
+        )
+
+    owner, repo = match.group(1), match.group(2)
+    dest = CLONE_BASE_DIR / owner / repo
+
+    # Always re-clone: remove existing clone
+    if dest.exists():
+        shutil.rmtree(dest)
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+
+    git_bin = shutil.which("git")
+    if not git_bin:
+        return _json_error("git executable not found on PATH")
+
+    result = subprocess.run(  # nosec B603
+        [git_bin, "clone", "--depth=1", url.strip(), str(dest)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+
+    if result.returncode != 0:
+        return _json_error(f"git clone failed: {result.stderr.strip()}")
+
+    # Detect default branch
+    branch_result = subprocess.run(  # nosec B603
+        [git_bin, "-C", str(dest), "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+    )
+    branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "main"
+
+    source_url_base = f"https://github.com/{owner}/{repo}/blob/{branch}/"
+
+    # Register in DB
+    conn = _get_conn(db_path)
+    try:
+        upsert_cloned_repo(conn, owner, repo, str(dest), source_url_base, branch)
+    finally:
+        conn.close()
+
+    return json.dumps({
+        "status": "cloned",
+        "owner": owner,
+        "repo": repo,
+        "branch": branch,
+        "local_path": str(dest),
+        "source_url_base": source_url_base,
+        "message": f"Cloned to {dest}. Use scan_directory('{dest}') to explore.",
+    }, indent=2)
