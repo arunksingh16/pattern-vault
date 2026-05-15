@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from src.store.db import get_connection, init_db, record_token_usage
+
 EXTRACTION_SYSTEM_PROMPT = """\
 You are a senior software engineer reviewing code to identify reusable patterns.
 
@@ -84,10 +86,44 @@ def _build_extraction_message(chunks: list[dict]) -> str:
     return "\n".join(parts)
 
 
+def _record_extraction_usage(
+    *,
+    db_path: Optional[Path],
+    model: str,
+    response,
+    user_message: str,
+) -> None:
+    from src.client import extract_usage_snapshot, get_provider_name
+
+    usage = extract_usage_snapshot(
+        response,
+        system=EXTRACTION_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": user_message}],
+    )
+    conn = get_connection(db_path)
+    try:
+        init_db(conn)
+        record_token_usage(
+            conn,
+            provider=get_provider_name(),
+            model=model,
+            flow="indexing",
+            operation="extract_patterns",
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+            total_tokens=usage["total_tokens"],
+            estimated=usage["estimated"],
+            usage=usage["usage"],
+        )
+    finally:
+        conn.close()
+
+
 def extract_patterns_sync(
     chunks: list[dict],
     api_key: Optional[str] = None,
     model: Optional[str] = None,
+    db_path: Optional[Path] = None,
 ) -> list[ExtractionResult]:
     """
     Extract patterns from a batch of code chunks using Claude.
@@ -109,6 +145,13 @@ def extract_patterns_sync(
         max_tokens=2000,
         system=EXTRACTION_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
+    )
+
+    _record_extraction_usage(
+        db_path=db_path,
+        model=model,
+        response=response,
+        user_message=user_message,
     )
 
     # Parse the JSON response
@@ -144,6 +187,7 @@ async def extract_patterns_async(
     chunks: list[dict],
     api_key: Optional[str] = None,
     model: Optional[str] = None,
+    db_path: Optional[Path] = None,
 ) -> list[ExtractionResult]:
     """Async version of extract_patterns_sync."""
     import sys
@@ -163,6 +207,13 @@ async def extract_patterns_async(
         max_tokens=2000,
         system=EXTRACTION_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_message}],
+    )
+
+    _record_extraction_usage(
+        db_path=db_path,
+        model=model,
+        response=response,
+        user_message=user_message,
     )
 
     text = response.content[0].text.strip()

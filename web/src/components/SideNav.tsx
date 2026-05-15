@@ -6,7 +6,9 @@ const navItems = [
   { id: 'copilot' as const, icon: 'psychology', label: 'Copilot' },
   { id: 'insights' as const, icon: 'insights', label: 'Insights' },
   { id: 'history' as const, icon: 'history', label: 'History' },
+  { id: 'usage' as const, icon: 'query_stats', label: 'Usage' },
   { id: 'vault' as const, icon: 'inventory_2', label: 'Vault' },
+  { id: 'mcp' as const, icon: 'monitoring', label: 'MCP' },
 ]
 
 export function SideNav() {

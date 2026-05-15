@@ -45,8 +45,8 @@ A personal code pattern knowledge base. Point it at any repo, it extracts reusab
 ├─────────────────────────────────────────────────────────────────────┤
 │  CLIENT LAYER                                                       │
 │  ┌────────────────────────────────────────────────────────────────┐ │
-│  │ src/client.py — factory for sync/async Anthropic clients       │ │
-│  │ Backends: anthropic (direct), bedrock (AWS), bifrost (proxy)   │ │
+│  │ src/client.py — factory for sync/async model clients           │ │
+│  │ Backends: anthropic (direct), bedrock (AWS), bifrost, ollama   │ │
 │  │ Selected by PATTERN_VAULT_BACKEND env var                      │ │
 │  └────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
@@ -67,7 +67,7 @@ pattern-vault/
 │   └── config.toml             # Chainlit UI settings
 ├── src/
 │   ├── __init__.py
-│   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost)
+│   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost/ollama)
 │   ├── cli.py                  # CLI entry point: index, search, stats, chat, serve
 │   ├── store/
 │   │   ├── __init__.py
@@ -154,6 +154,7 @@ Max rounds: 15 (safety limit in `MAX_TOOL_ROUNDS`).
 PATTERN_VAULT_BACKEND=anthropic  → anthropic.Anthropic / AsyncAnthropic
 PATTERN_VAULT_BACKEND=bedrock    → anthropic.AnthropicBedrock / AsyncAnthropicBedrock
 PATTERN_VAULT_BACKEND=bifrost    → anthropic.Anthropic with custom base_url
+PATTERN_VAULT_BACKEND=ollama     → OpenAI / AsyncOpenAI wrapped in Anthropic-compatible adapter
 ```
 
 Functions: `make_client()`, `make_async_client()`, `get_model()`, `describe_backend()`
@@ -176,6 +177,10 @@ chunks (id, pattern_id FK, code_text, chunk_type, embedding BLOB)
 
 repo_insights (id, repo_path, insight_text, tags JSON, created_at)
 
+token_usage_events (id, provider, model, flow, operation, input_tokens,
+                    output_tokens, total_tokens, estimated, usage_json,
+                    session_id, job_id, created_at)
+
 patterns_fts — FTS5 virtual table over (name, summary, tags, category, language)
                with porter+unicode61 tokenizer, BM25 ranking
                kept in sync via INSERT/DELETE/UPDATE triggers
@@ -193,7 +198,7 @@ The extraction prompt in `src/indexer/extractor.py` classifies patterns into:
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
-| `PATTERN_VAULT_BACKEND` | No | `anthropic` | Backend: `anthropic`, `bedrock`, or `bifrost` |
+| `PATTERN_VAULT_BACKEND` | No | `anthropic` | Backend: `anthropic`, `bedrock`, `bifrost`, or `ollama` |
 | `PATTERN_VAULT_DB` | No | `~/.pattern-vault/patterns.db` | SQLite database path |
 | `PATTERN_VAULT_WORKSPACE_ROOTS` | No | current working directory | `os.pathsep`-separated roots that agent file tools may scan/read |
 | `PATTERN_VAULT_MODEL` | No | auto per backend | Override model ID |
@@ -204,6 +209,8 @@ The extraction prompt in `src/indexer/extractor.py` classifies patterns into:
 | `AWS_SESSION_TOKEN` | No | — | For temporary AWS credentials |
 | `BIFROST_URL` | If backend=bifrost | — | e.g. `http://localhost:8080/anthropic` |
 | `BIFROST_API_KEY` | No | `dummy` | Bifrost virtual key |
+| `OLLAMA_BASE_URL` | No | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
+| `OLLAMA_API_KEY` | No | `ollama` | Optional dummy key for OpenAI-compatible clients |
 
 ## Running
 
@@ -217,6 +224,11 @@ export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1
 # Bifrost (proxy to any provider):
 export PATTERN_VAULT_BACKEND=bifrost
 export BIFROST_URL=http://localhost:8080/anthropic
+
+# Ollama (local models such as qwen):
+export PATTERN_VAULT_BACKEND=ollama
+export OLLAMA_BASE_URL=http://localhost:11434/v1
+export PATTERN_VAULT_MODEL=qwen2.5-coder:7b
 
 # Direct Anthropic:
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -333,7 +345,7 @@ python -m compileall src tests
 ## Dependencies
 
 ```
-Core:           anthropic, mcp[cli], tree-sitter, tree-sitter-python, pydantic
+Core:           anthropic, openai, mcp[cli], tree-sitter, tree-sitter-python, pydantic
 UI:             chainlit (Python ≤3.13 only)
 Bedrock:        pip install "anthropic[bedrock]"
 More languages: tree-sitter-javascript, tree-sitter-typescript, etc.

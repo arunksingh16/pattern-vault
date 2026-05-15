@@ -1,11 +1,20 @@
 import { create } from 'zustand'
 
-type View = 'explorer' | 'patterns' | 'copilot' | 'insights' | 'history' | 'vault'
+type View = 'explorer' | 'patterns' | 'copilot' | 'insights' | 'history' | 'usage' | 'vault' | 'mcp' | 'ingestion'
 
 export interface PendingAnalyseData {
   message: string
   repoOwner: string
   repoName: string
+}
+
+export interface ActiveIndexJob {
+  jobId: string
+  title: string
+  path: string
+  repoName?: string | null
+  sourceKind?: 'repo' | 'path'
+  dryRun: boolean
 }
 
 interface UIState {
@@ -14,6 +23,7 @@ interface UIState {
   selectedPatternId: number | null
   discussPatternId: number | null
   pendingAnalyseData: PendingAnalyseData | null
+  activeIndexJob: ActiveIndexJob | null
   setActiveView: (view: View) => void
   toggleSidebar: () => void
   selectPattern: (id: number | null) => void
@@ -21,6 +31,8 @@ interface UIState {
   clearDiscussPattern: () => void
   setPendingAnalyse: (data: PendingAnalyseData) => void
   clearPendingAnalyse: () => void
+  setActiveIndexJob: (job: ActiveIndexJob) => void
+  clearActiveIndexJob: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -29,6 +41,7 @@ export const useUIStore = create<UIState>((set) => ({
   selectedPatternId: null,
   discussPatternId: null,
   pendingAnalyseData: null,
+  activeIndexJob: null,
   setActiveView: (view) => set({ activeView: view }),
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
   selectPattern: (id) => set({ selectedPatternId: id }),
@@ -36,4 +49,6 @@ export const useUIStore = create<UIState>((set) => ({
   clearDiscussPattern: () => set({ discussPatternId: null }),
   setPendingAnalyse: (data) => set({ pendingAnalyseData: data }),
   clearPendingAnalyse: () => set({ pendingAnalyseData: null }),
+  setActiveIndexJob: (job) => set({ activeIndexJob: job }),
+  clearActiveIndexJob: () => set({ activeIndexJob: null }),
 }))

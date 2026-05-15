@@ -8,7 +8,8 @@ Claude decides which tools to call based on the conversation.
 from pathlib import Path
 from typing import Optional, Generator
 
-from ..client import make_client, make_async_client, get_model
+from ..client import extract_usage_snapshot, get_model, get_provider_name, make_async_client, make_client
+from ..store.db import get_connection, init_db, record_token_usage
 from .tools import TOOL_DEFINITIONS, execute_tool
 
 SYSTEM_PROMPT = """\
@@ -34,11 +35,42 @@ Always explain what you're finding and ask the user if they want specific patter
 MAX_TOOL_ROUNDS = 15  # safety limit on tool-use loops
 
 
+def _record_usage(
+    *,
+    db_path: Optional[Path],
+    model: str,
+    response,
+    messages: list[dict],
+    system: str,
+    session_id: Optional[int] = None,
+) -> None:
+    usage = extract_usage_snapshot(response, system=system, messages=messages)
+    conn = get_connection(db_path)
+    try:
+        init_db(conn)
+        record_token_usage(
+            conn,
+            provider=get_provider_name(),
+            model=model,
+            flow="chat",
+            operation="agent_turn",
+            input_tokens=usage["input_tokens"],
+            output_tokens=usage["output_tokens"],
+            total_tokens=usage["total_tokens"],
+            estimated=usage["estimated"],
+            usage=usage["usage"],
+            session_id=session_id,
+        )
+    finally:
+        conn.close()
+
+
 def run_agent_turn(
     messages: list[dict],
     api_key: Optional[str] = None,
     model: Optional[str] = None,
     db_path: Optional[Path] = None,
+    session_id: Optional[int] = None,
 ) -> Generator[dict, None, None]:
     """
     Run one agent turn: send messages to Claude, handle tool calls in a loop.
@@ -82,6 +114,15 @@ def run_agent_turn(
             yield {"type": "error", "message": f"API error: {e}"}
             return
 
+        _record_usage(
+            db_path=db_path,
+            model=model,
+            response=response,
+            messages=current_messages,
+            system=SYSTEM_PROMPT,
+            session_id=session_id,
+        )
+
         # Process response content blocks
         assistant_content = response.content
         tool_use_blocks = []
@@ -122,6 +163,7 @@ async def run_agent_turn_async(
     model: Optional[str] = None,
     db_path: Optional[Path] = None,
     extra_roots: Optional[list[Path]] = None,
+    session_id: Optional[int] = None,
 ):
     """
     Async version of run_agent_turn.
@@ -158,6 +200,15 @@ async def run_agent_turn_async(
         except Exception as e:
             yield {"type": "error", "message": f"API error: {e}"}
             return
+
+        _record_usage(
+            db_path=db_path,
+            model=model,
+            response=response,
+            messages=current_messages,
+            system=SYSTEM_PROMPT,
+            session_id=session_id,
+        )
 
         assistant_content = response.content
         tool_use_blocks = []

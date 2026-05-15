@@ -126,7 +126,11 @@ def index_directory(
             })
 
         try:
-            results = extract_patterns_sync(chunk_dicts, api_key=api_key)
+            results = extract_patterns_sync(
+                chunk_dicts,
+                api_key=api_key,
+                db_path=db_path,
+            )
         except Exception as e:
             stats.errors.append(f"Extraction error at batch {batch_start}: {e}")
             continue

@@ -32,7 +32,12 @@ async def _event_stream(
     assistant_text = ""
     tool_calls: list[dict] = []
 
-    async for event in run_agent_turn_async(messages, db_path=DB_PATH, extra_roots=extra_roots):
+    async for event in run_agent_turn_async(
+        messages,
+        db_path=DB_PATH,
+        extra_roots=extra_roots,
+        session_id=session_id,
+    ):
         if event.get("type") == "text":
             assistant_text += event.get("content", "")
         elif event.get("type") == "tool_call":

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type ClonedRepo, type ChatSession } from '@/api/client'
+import { api, ApiError, type ClonedRepo, type ChatSession, type WorkspaceIndexJob } from '@/api/client'
 import { useUIStore } from '@/stores/uiStore'
 import { useChatStore } from '@/stores/chatStore'
 
@@ -69,13 +69,17 @@ export function ExplorerPanel() {
   const qc = useQueryClient()
   const setActiveView = useUIStore((s) => s.setActiveView)
   const setPendingAnalyse = useUIStore((s) => s.setPendingAnalyse)
+  const setActiveIndexJob = useUIStore((s) => s.setActiveIndexJob)
   const loadSession = useChatStore((s) => s.loadSession)
   const setRepoContext = useChatStore((s) => s.setRepoContext)
   const clearChat = useChatStore((s) => s.clearChat)
 
   // Per-repo state: spinner and continue/fresh prompt
   const [analysingRepoId, setAnalysingRepoId] = useState<number | null>(null)
+  const [indexingRepoId, setIndexingRepoId] = useState<number | null>(null)
   const [promptState, setPromptState] = useState<{ repo: ClonedRepo; session: ChatSession } | null>(null)
+  const [dryRunIndexing, setDryRunIndexing] = useState(false)
+  const [indexError, setIndexError] = useState<string | null>(null)
 
   // Local workspace tree state
   const { data: roots, isLoading } = useQuery({
@@ -88,6 +92,12 @@ export function ExplorerPanel() {
       setSelectedRoot(roots[0].path)
     }
   }, [roots, selectedRoot])
+  const [localIndexPath, setLocalIndexPath] = useState('')
+  useEffect(() => {
+    if (selectedRoot) {
+      setLocalIndexPath(selectedRoot)
+    }
+  }, [selectedRoot])
   const { data: tree } = useQuery({
     queryKey: ['workspace-tree', selectedRoot],
     queryFn: () => api.workspace.tree(selectedRoot!),
@@ -98,6 +108,11 @@ export function ExplorerPanel() {
   const { data: clonedRepos } = useQuery({
     queryKey: ['cloned-repos'],
     queryFn: api.workspace.cloned,
+  })
+  const { data: recentIndexJobs } = useQuery({
+    queryKey: ['index-jobs'],
+    queryFn: () => api.workspace.indexJobs(8),
+    refetchInterval: 5000,
   })
 
   // Clone form state
@@ -157,6 +172,61 @@ export function ExplorerPanel() {
     setActiveView('copilot')
   }
 
+  async function handleRepoIndex(repo: ClonedRepo) {
+    if (indexingRepoId !== null) return
+    setIndexingRepoId(repo.id)
+    setIndexError(null)
+    try {
+      const job = await api.workspace.startIndexForRepo(repo.owner, repo.repo, dryRunIndexing)
+      setActiveIndexJob({
+        jobId: job.job_id,
+        title: job.title,
+        path: job.path,
+        repoName: job.repo_name,
+        sourceKind: job.source_kind,
+        dryRun: job.dry_run,
+      })
+      void qc.invalidateQueries({ queryKey: ['index-jobs'] })
+      setActiveView('ingestion')
+    } catch (error) {
+      setIndexError(formatIndexError(error))
+    } finally {
+      setIndexingRepoId(null)
+    }
+  }
+
+  async function handleLocalIndex() {
+    if (!localIndexPath.trim()) return
+    setIndexError(null)
+    try {
+      const job = await api.workspace.startIndexForPath(localIndexPath.trim(), dryRunIndexing)
+      setActiveIndexJob({
+        jobId: job.job_id,
+        title: job.title,
+        path: job.path,
+        repoName: job.repo_name,
+        sourceKind: job.source_kind,
+        dryRun: job.dry_run,
+      })
+      void qc.invalidateQueries({ queryKey: ['index-jobs'] })
+      setActiveView('ingestion')
+    } catch (error) {
+      setIndexError(formatIndexError(error))
+    }
+  }
+
+  function handleOpenJob(job: WorkspaceIndexJob) {
+    setActiveIndexJob({
+      jobId: job.job_id,
+      title: job.title,
+      path: job.path,
+      repoName: job.repo_name,
+      sourceKind: job.source_kind,
+      dryRun: job.dry_run,
+    })
+    setActiveView('ingestion')
+  }
+
   return (
     <div className="flex-1 glass-panel p-6 flex flex-col gap-6 overflow-hidden">
       {/* Header */}
@@ -167,7 +237,18 @@ export function ExplorerPanel() {
 
       {/* GitHub clone section */}
       <div className="space-y-3">
-        <span className="font-mono text-label-caps text-outline uppercase">Clone GitHub Repo</span>
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-mono text-label-caps text-outline uppercase">Clone GitHub Repo</span>
+          <label className="flex items-center gap-2 text-[11px] font-mono text-on-surface-variant uppercase">
+            <input
+              type="checkbox"
+              checked={dryRunIndexing}
+              onChange={(e) => setDryRunIndexing(e.target.checked)}
+              className="h-3.5 w-3.5 rounded border-outline-variant/30 bg-surface-container-lowest"
+            />
+            Dry run index only
+          </label>
+        </div>
         <form onSubmit={handleClone} className="flex gap-2">
           <input
             type="text"
@@ -197,6 +278,9 @@ export function ExplorerPanel() {
         {cloneMutation.isSuccess && (
           <p className="text-tertiary text-[11px] font-mono">Cloned successfully!</p>
         )}
+        {indexError && (
+          <p className="text-error text-[11px] font-mono">{indexError}</p>
+        )}
       </div>
 
       {/* Previously cloned repos */}
@@ -224,7 +308,19 @@ export function ExplorerPanel() {
                     ) : (
                       <span className="material-symbols-outlined text-[13px]">psychology</span>
                     )}
-                    Analyse
+                    Copilot
+                  </button>
+                  <button
+                    onClick={() => handleRepoIndex(repo)}
+                    disabled={indexingRepoId === repo.id}
+                    className="flex items-center gap-1 px-2 py-1 text-secondary hover:bg-secondary/10 rounded text-[10px] font-mono uppercase transition-colors shrink-0 disabled:opacity-50"
+                  >
+                    {indexingRepoId === repo.id ? (
+                      <span className="material-symbols-outlined text-[13px] animate-spin">progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined text-[13px]">deployed_code</span>
+                    )}
+                    Index
                   </button>
                 </div>
 
@@ -260,9 +356,68 @@ export function ExplorerPanel() {
         </div>
       )}
 
+      {recentIndexJobs && recentIndexJobs.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-mono text-label-caps text-outline uppercase">Recent Index Jobs</span>
+            <span className="font-mono text-[10px] text-outline uppercase">Reconnect after refresh</span>
+          </div>
+          <div className="space-y-1.5">
+            {recentIndexJobs.map((job) => (
+              <button
+                key={job.job_id}
+                onClick={() => handleOpenJob(job)}
+                className="w-full rounded-lg border border-outline-variant/20 bg-surface-container-lowest/40 px-3 py-2 text-left hover:border-primary/30 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className={`material-symbols-outlined text-[16px] ${job.status === 'running' ? 'text-tertiary' : job.status === 'failed' ? 'text-secondary' : 'text-primary'}`}>
+                    {job.source_kind === 'repo' ? 'deployed_code' : 'folder_open'}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="truncate text-sm font-medium text-on-surface">{job.title}</p>
+                      <span className="rounded bg-surface-container-high px-2 py-0.5 text-[10px] uppercase text-on-surface-variant">
+                        {job.source_kind}
+                      </span>
+                      {job.dry_run && (
+                        <span className="rounded bg-secondary/15 px-2 py-0.5 text-[10px] uppercase text-secondary">dry run</span>
+                      )}
+                    </div>
+                    <p className="mt-1 truncate text-[11px] text-outline">{job.path}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-[10px] font-mono uppercase ${job.status === 'running' ? 'text-tertiary' : job.status === 'failed' ? 'text-secondary' : 'text-primary'}`}>{job.status}</p>
+                    <p className="mt-1 text-[10px] text-outline">{new Date(job.updated_at * 1000).toLocaleString()}</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Local workspace tree */}
       <div className="flex-1 flex flex-col gap-2 min-h-0">
-        <span className="font-mono text-label-caps text-outline uppercase">Workspace</span>
+        <div className="flex items-center justify-between gap-3">
+          <span className="font-mono text-label-caps text-outline uppercase">Workspace</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={localIndexPath}
+              onChange={(e) => setLocalIndexPath(e.target.value)}
+              placeholder="/path/to/project"
+              className="w-72 max-w-full bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-3 py-2 text-xs font-mono text-on-surface placeholder:text-outline/50 focus:outline-none focus:border-primary/50"
+            />
+            <button
+              type="button"
+              onClick={handleLocalIndex}
+              disabled={!localIndexPath.trim()}
+              className="px-3 py-2 bg-secondary/10 hover:bg-secondary/20 text-secondary rounded-lg font-mono text-[11px] uppercase transition-colors disabled:opacity-40"
+            >
+              Index Path
+            </button>
+          </div>
+        </div>
 
         {roots && roots.length > 1 && (
           <div className="flex gap-2">
@@ -303,4 +458,14 @@ export function ExplorerPanel() {
       </div>
     </div>
   )
+}
+
+function formatIndexError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message
+  }
+  if (error instanceof Error) {
+    return error.message
+  }
+  return 'Index job failed to start.'
 }

@@ -83,9 +83,73 @@ export interface ClonedRepo {
   cloned_at: number
 }
 
+export interface MCPStatus {
+  running: boolean
+  pid: number | null
+  host: string
+  port: number
+  uptime_seconds: number | null
+  command: string[]
+}
+
+export interface MCPToolInfo {
+  name: string
+  mode: 'read' | 'write'
+  description: string
+}
+
+export interface WorkspaceIndexStats {
+  files_discovered: number
+  files_skipped: number
+  files_scanned: number
+  chunks_extracted: number
+  patterns_found: number
+  patterns_stored: number
+  current_stage: string
+}
+
+export interface WorkspaceIndexJob {
+  job_id: string
+  title: string
+  source_kind: 'repo' | 'path'
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  path: string
+  repo_name: string | null
+  dry_run: boolean
+  created_at: number
+  started_at: number | null
+  finished_at: number | null
+  updated_at: number
+  stats: WorkspaceIndexStats
+  error: string | null
+}
+
+export interface WorkspaceIndexEvent {
+  type: 'status' | 'log' | 'batch' | 'pattern_found' | 'done' | 'error'
+  message?: string
+  stage?: string
+  range_start?: number
+  range_end?: number
+  category?: string
+  name?: string
+  stats: WorkspaceIndexStats
+  errors?: string[]
+}
+
+export interface DailyTokenUsageRow {
+  day: string
+  provider: string
+  requests: number
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  estimated_requests: number
+}
+
 export const api = {
   health: () => request<HealthStatus>('/health'),
   stats: () => request<VaultStats>('/stats'),
+  usageDaily: (days = 14) => request<DailyTokenUsageRow[]>(`/usage/daily?days=${days}`),
   categories: () => request<string[]>('/categories'),
   tags: (category?: string) =>
     request<string[]>(category ? `/tags?category=${encodeURIComponent(category)}` : '/tags'),
@@ -138,5 +202,24 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ url }) }
       ),
     cloned: () => request<ClonedRepo[]>('/workspace/cloned'),
+    startIndexForPath: (path: string, dryRun = false) =>
+      request<WorkspaceIndexJob>('/workspace/index', {
+        method: 'POST',
+        body: JSON.stringify({ path, dry_run: dryRun }),
+      }),
+    startIndexForRepo: (owner: string, repo: string, dryRun = false) =>
+      request<WorkspaceIndexJob>('/workspace/index', {
+        method: 'POST',
+        body: JSON.stringify({ repo: { owner, repo }, dry_run: dryRun }),
+      }),
+    indexStatus: (jobId: string) => request<WorkspaceIndexJob>(`/workspace/index/${encodeURIComponent(jobId)}`),
+    indexJobs: (limit = 20) => request<WorkspaceIndexJob[]>(`/workspace/index-jobs?limit=${limit}`),
+  },
+
+  mcp: {
+    status: () => request<MCPStatus>('/mcp/status'),
+    start: () => request<MCPStatus>('/mcp/start', { method: 'POST' }),
+    stop: () => request<MCPStatus>('/mcp/stop', { method: 'POST' }),
+    tools: () => request<{ tools: MCPToolInfo[] }>('/mcp/tools'),
   },
 }

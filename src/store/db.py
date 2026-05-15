@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-DB_VERSION = 5
+DB_VERSION = 7
 DEFAULT_DB_PATH = Path.home() / ".pattern-vault" / "patterns.db"
 DB_PATH_ENV = "PATTERN_VAULT_DB"
 
@@ -117,6 +117,53 @@ def init_db(conn: sqlite3.Connection) -> None:
             cloned_at REAL NOT NULL,
             UNIQUE(owner, repo)
         );
+
+        CREATE TABLE IF NOT EXISTS index_jobs (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            source_kind TEXT NOT NULL,
+            path TEXT NOT NULL,
+            repo_name TEXT DEFAULT NULL,
+            dry_run INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL,
+            stats_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT DEFAULT NULL,
+            created_at REAL NOT NULL,
+            started_at REAL DEFAULT NULL,
+            finished_at REAL DEFAULT NULL,
+            updated_at REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS index_job_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            FOREIGN KEY (job_id) REFERENCES index_jobs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_index_jobs_updated ON index_jobs(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_index_job_events_job ON index_job_events(job_id, id);
+
+        CREATE TABLE IF NOT EXISTS token_usage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            flow TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens INTEGER NOT NULL DEFAULT 0,
+            estimated INTEGER NOT NULL DEFAULT 0,
+            usage_json TEXT NOT NULL DEFAULT '{}',
+            session_id INTEGER DEFAULT NULL,
+            job_id TEXT DEFAULT NULL,
+            created_at REAL NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage_events(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_token_usage_provider_day ON token_usage_events(provider, created_at DESC);
     """)
 
     # FTS5 virtual table for full-text search
@@ -148,6 +195,12 @@ def init_db(conn: sqlite3.Connection) -> None:
 
     if stored_version < 5:
         _migrate_to_v5(conn)
+
+    if stored_version < 6:
+        _migrate_to_v6(conn)
+
+    if stored_version < 7:
+        _migrate_to_v7(conn)
 
     conn.execute(
         "INSERT OR REPLACE INTO db_meta (key, value) VALUES ('version', ?)",
@@ -191,6 +244,65 @@ def _migrate_to_v5(conn: sqlite3.Connection) -> None:
     cols = [row[1] for row in conn.execute("PRAGMA table_info(chat_sessions)").fetchall()]
     if "source_repo" not in cols:
         conn.execute("ALTER TABLE chat_sessions ADD COLUMN source_repo TEXT DEFAULT NULL")
+    conn.commit()
+
+
+def _migrate_to_v6(conn: sqlite3.Connection) -> None:
+    """Migrate DB from v5 → v6: add persisted index jobs and event logs."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS index_jobs (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            source_kind TEXT NOT NULL,
+            path TEXT NOT NULL,
+            repo_name TEXT DEFAULT NULL,
+            dry_run INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL,
+            stats_json TEXT NOT NULL DEFAULT '{}',
+            error TEXT DEFAULT NULL,
+            created_at REAL NOT NULL,
+            started_at REAL DEFAULT NULL,
+            finished_at REAL DEFAULT NULL,
+            updated_at REAL NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS index_job_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_id TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            created_at REAL NOT NULL,
+            FOREIGN KEY (job_id) REFERENCES index_jobs(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_index_jobs_updated ON index_jobs(updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_index_job_events_job ON index_job_events(job_id, id);
+    """)
+    conn.commit()
+
+
+def _migrate_to_v7(conn: sqlite3.Connection) -> None:
+    """Migrate DB from v6 → v7: add token usage tracking."""
+    conn.executescript("""
+        CREATE TABLE IF NOT EXISTS token_usage_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            flow TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens INTEGER NOT NULL DEFAULT 0,
+            estimated INTEGER NOT NULL DEFAULT 0,
+            usage_json TEXT NOT NULL DEFAULT '{}',
+            session_id INTEGER DEFAULT NULL,
+            job_id TEXT DEFAULT NULL,
+            created_at REAL NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage_events(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_token_usage_provider_day ON token_usage_events(provider, created_at DESC);
+    """)
     conn.commit()
 
 
@@ -601,6 +713,77 @@ def get_stats(conn: sqlite3.Connection) -> dict:
     }
 
 
+# ── Token usage tracking ──────────────────────────────────────
+
+def record_token_usage(
+    conn: sqlite3.Connection,
+    *,
+    provider: str,
+    model: str,
+    flow: str,
+    operation: str,
+    input_tokens: int,
+    output_tokens: int,
+    total_tokens: int,
+    estimated: bool,
+    usage: Optional[dict] = None,
+    session_id: Optional[int] = None,
+    job_id: Optional[str] = None,
+    created_at: Optional[float] = None,
+) -> int:
+    timestamp = created_at or time.time()
+    cursor = conn.execute(
+        """
+        INSERT INTO token_usage_events (
+            provider, model, flow, operation,
+            input_tokens, output_tokens, total_tokens,
+            estimated, usage_json, session_id, job_id, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            provider,
+            model,
+            flow,
+            operation,
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            1 if estimated else 0,
+            json.dumps(usage or {}),
+            session_id,
+            job_id,
+            timestamp,
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_daily_token_usage(
+    conn: sqlite3.Connection,
+    *,
+    days: int = 14,
+) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT
+            date(created_at, 'unixepoch', 'localtime') AS day,
+            provider,
+            COUNT(*) AS requests,
+            SUM(input_tokens) AS input_tokens,
+            SUM(output_tokens) AS output_tokens,
+            SUM(total_tokens) AS total_tokens,
+            SUM(CASE WHEN estimated = 1 THEN 1 ELSE 0 END) AS estimated_requests
+        FROM token_usage_events
+        WHERE created_at >= (? - (? * 86400))
+        GROUP BY day, provider
+        ORDER BY day DESC, provider ASC
+        """,
+        (time.time(), days),
+    ).fetchall()
+    return [dict(row) for row in rows]
+
+
 # ── Chat history ─────────────────────────────────────────────────
 
 def create_session(
@@ -670,3 +853,154 @@ def delete_session(conn: sqlite3.Connection, session_id: int) -> bool:
     cursor = conn.execute("DELETE FROM chat_sessions WHERE id = ?", (session_id,))
     conn.commit()
     return cursor.rowcount > 0
+
+
+# ── Index job persistence ───────────────────────────────────────
+
+def create_index_job(
+    conn: sqlite3.Connection,
+    job_id: str,
+    title: str,
+    source_kind: str,
+    path: str,
+    repo_name: Optional[str] = None,
+    dry_run: bool = False,
+    status: str = "queued",
+    stats: Optional[dict] = None,
+) -> str:
+    now = time.time()
+    conn.execute(
+        """
+        INSERT INTO index_jobs (
+            id, title, source_kind, path, repo_name, dry_run, status,
+            stats_json, error, created_at, started_at, finished_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?)
+        """,
+        (
+            job_id,
+            title,
+            source_kind,
+            path,
+            repo_name,
+            1 if dry_run else 0,
+            status,
+            json.dumps(stats or {}),
+            now,
+            now,
+        ),
+    )
+    conn.commit()
+    return job_id
+
+
+def update_index_job(
+    conn: sqlite3.Connection,
+    job_id: str,
+    *,
+    status: Optional[str] = None,
+    stats: Optional[dict] = None,
+    error: Optional[str] = None,
+    started_at: Optional[float] = None,
+    finished_at: Optional[float] = None,
+) -> bool:
+    current = conn.execute(
+        "SELECT status, stats_json, error, started_at, finished_at FROM index_jobs WHERE id = ?",
+        (job_id,),
+    ).fetchone()
+    if not current:
+        return False
+
+    next_status = status if status is not None else current[0]
+    next_stats = json.dumps(stats) if stats is not None else current[1]
+    next_error = error if error is not None else current[2]
+    next_started_at = started_at if started_at is not None else current[3]
+    next_finished_at = finished_at if finished_at is not None else current[4]
+    now = time.time()
+
+    conn.execute(
+        """
+        UPDATE index_jobs
+        SET status = ?, stats_json = ?, error = ?, started_at = ?, finished_at = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            next_status,
+            next_stats,
+            next_error,
+            next_started_at,
+            next_finished_at,
+            now,
+            job_id,
+        ),
+    )
+    conn.commit()
+    return True
+
+
+def append_index_job_event(conn: sqlite3.Connection, job_id: str, event: dict) -> int:
+    now = time.time()
+    cursor = conn.execute(
+        "INSERT INTO index_job_events (job_id, event_type, payload, created_at) VALUES (?, ?, ?, ?)",
+        (job_id, event.get("type", "log"), json.dumps(event), now),
+    )
+    conn.execute(
+        "UPDATE index_jobs SET updated_at = ? WHERE id = ?",
+        (now, job_id),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def get_index_job(conn: sqlite3.Connection, job_id: str) -> Optional[dict]:
+    row = conn.execute(
+        """
+        SELECT id, title, source_kind, path, repo_name, dry_run, status, stats_json, error,
+               created_at, started_at, finished_at, updated_at
+        FROM index_jobs
+        WHERE id = ?
+        """,
+        (job_id,),
+    ).fetchone()
+    if not row:
+        return None
+
+    result = dict(row)
+    result["job_id"] = result.pop("id")
+    result["dry_run"] = bool(result["dry_run"])
+    result["stats"] = json.loads(result.pop("stats_json") or "{}")
+    return result
+
+
+def list_index_jobs(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
+    rows = conn.execute(
+        """
+        SELECT id, title, source_kind, path, repo_name, dry_run, status, stats_json, error,
+               created_at, started_at, finished_at, updated_at
+        FROM index_jobs
+        ORDER BY updated_at DESC
+        LIMIT ?
+        """,
+        (limit,),
+    ).fetchall()
+    results = []
+    for row in rows:
+        result = dict(row)
+        result["job_id"] = result.pop("id")
+        result["dry_run"] = bool(result["dry_run"])
+        result["stats"] = json.loads(result.pop("stats_json") or "{}")
+        results.append(result)
+    return results
+
+
+def get_index_job_events(conn: sqlite3.Connection, job_id: str, limit: Optional[int] = None) -> list[dict]:
+    sql = (
+        "SELECT payload FROM index_job_events WHERE job_id = ? ORDER BY id"
+        if limit is None
+        else "SELECT payload FROM index_job_events WHERE job_id = ? ORDER BY id DESC LIMIT ?"
+    )
+    params = (job_id,) if limit is None else (job_id, limit)
+    rows = conn.execute(sql, params).fetchall()
+    payloads = [json.loads(row[0]) for row in rows]
+    if limit is not None:
+        payloads.reverse()
+    return payloads

@@ -85,7 +85,7 @@ def cmd_stats(args):
 
 
 def cmd_chat(args):
-    """Interactive chat with the agent (requires ANTHROPIC_API_KEY)."""
+    """Interactive chat with the agent using the configured model backend."""
     from .agent.orchestrator import run_agent_turn
 
     print("Pattern Vault — Interactive Analysis")

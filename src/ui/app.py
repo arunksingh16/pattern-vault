@@ -9,7 +9,7 @@ Provides:
 - Pattern search and browsing
 - Manual pattern saving
 
-Requires: ANTHROPIC_API_KEY environment variable.
+Requires: a configured model backend (Anthropic, Bedrock, Bifrost, or Ollama).
 """
 
 import json

@@ -7,7 +7,10 @@ import { ChatPanel } from '@/panels/ChatPanel'
 import { InsightsPanel } from '@/panels/InsightsPanel'
 import { HistoryPanel } from '@/panels/HistoryPanel'
 import { ExplorerPanel } from '@/panels/ExplorerPanel'
+import { IngestionPanel } from '@/panels/IngestionPanel'
+import { UsagePanel } from '@/panels/UsagePanel'
 import { VaultPanel } from '@/panels/VaultPanel'
+import { MCPPanel } from '@/panels/MCPPanel'
 import { useUIStore } from '@/stores/uiStore'
 import logo from '@/assets/logo.png'
 
@@ -60,6 +63,10 @@ function ViewRouter() {
       return (
         <PanelGrid center={<HistoryPanel />} />
       )
+    case 'usage':
+      return (
+        <PanelGrid center={<UsagePanel />} />
+      )
     case 'explorer':
       return (
         <PanelGrid center={<ExplorerPanel />} />
@@ -67,6 +74,14 @@ function ViewRouter() {
     case 'vault':
       return (
         <PanelGrid center={<VaultPanel />} />
+      )
+    case 'ingestion':
+      return (
+        <PanelGrid center={<IngestionPanel />} />
+      )
+    case 'mcp':
+      return (
+        <PanelGrid center={<MCPPanel />} />
       )
     default:
       return (
