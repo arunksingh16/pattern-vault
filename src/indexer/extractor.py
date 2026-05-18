@@ -8,7 +8,7 @@ whether each chunk contains a reusable pattern worth indexing.
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from src.store.db import get_connection, init_db, record_token_usage
 
@@ -48,7 +48,8 @@ Each pattern object must have:
   "category": "one of the categories above",
   "tags": ["tag1", "tag2", "tag3"],
   "summary": "one paragraph explaining what this pattern does and when to use it",
-  "quality_signal": "brief note on quality — e.g. 'clean implementation' or 'handles edge cases well'"
+  "quality_signal": "brief note on quality — e.g. 'clean implementation' or 'handles edge cases well'",
+  "quality_score": 0.0
 }
 
 For non-patterns, include: {"chunk_index": N, "is_pattern": false}
@@ -65,15 +66,124 @@ class ExtractionResult:
     tags: list[str] = None
     summary: str = ""
     quality_signal: str = ""
+    quality_score: float | None = None
 
     def __post_init__(self):
         if self.tags is None:
             self.tags = []
 
 
-def _build_extraction_message(chunks: list[dict]) -> str:
+class ExtractionResponseError(RuntimeError):
+    """Raised when a model response cannot be parsed as extraction output."""
+
+
+def _get_block_value(block: Any, key: str, default: Any = None) -> Any:
+    if isinstance(block, dict):
+        return block.get(key, default)
+    return getattr(block, key, default)
+
+
+def _strip_json_fence(text: str) -> str:
+    text = text.strip()
+    if not text.startswith("```"):
+        return text
+
+    text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip()
+
+
+def _extract_response_text(response: Any, *, provider: str, model: str) -> str:
+    content = getattr(response, "content", None)
+    if not content:
+        raise ExtractionResponseError(
+            f"Malformed extraction response from {provider}/{model}: no content blocks returned"
+        )
+
+    for block in content:
+        block_type = _get_block_value(block, "type")
+        text = _get_block_value(block, "text")
+        if (block_type in {None, "text"}) and isinstance(text, str) and text.strip():
+            return _strip_json_fence(text)
+
+    block_types = [
+        str(_get_block_value(block, "type", "unknown"))
+        for block in content
+    ]
+    raise ExtractionResponseError(
+        f"Malformed extraction response from {provider}/{model}: no non-empty text block "
+        f"returned (content block types: {', '.join(block_types)})"
+    )
+
+
+def _parse_extraction_results(text: str, *, provider: str, model: str) -> list[ExtractionResult]:
+    if not text.strip():
+        raise ExtractionResponseError(
+            f"Malformed extraction response from {provider}/{model}: empty text content"
+        )
+
+    try:
+        results_raw = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ExtractionResponseError(
+            f"Malformed extraction response from {provider}/{model}: invalid JSON "
+            f"at line {exc.lineno} column {exc.colno}"
+        ) from exc
+
+    if not isinstance(results_raw, list):
+        raise ExtractionResponseError(
+            f"Malformed extraction response from {provider}/{model}: expected a JSON array"
+        )
+
+    results = []
+    for item in results_raw:
+        if not isinstance(item, dict):
+            raise ExtractionResponseError(
+                f"Malformed extraction response from {provider}/{model}: array item is not an object"
+            )
+        chunk_index = item.get("chunk_index", 0)
+        if not isinstance(chunk_index, int):
+            raise ExtractionResponseError(
+                f"Malformed extraction response from {provider}/{model}: chunk_index is not an integer"
+            )
+        tags = item.get("tags", [])
+        if not isinstance(tags, list):
+            raise ExtractionResponseError(
+                f"Malformed extraction response from {provider}/{model}: tags is not an array"
+            )
+        results.append(ExtractionResult(
+            chunk_index=chunk_index,
+            is_pattern=item.get("is_pattern", False),
+            name=item.get("name", ""),
+            category=item.get("category", "general"),
+            tags=tags,
+            summary=item.get("summary", ""),
+            quality_signal=item.get("quality_signal", ""),
+            quality_score=_coerce_quality_score(item.get("quality_score")),
+        ))
+    return results
+
+
+def _coerce_quality_score(value: Any) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return max(0.0, min(1.0, float(value)))
+    return None
+
+
+def _build_extraction_message(chunks: list[dict], *, profile_guidance: str | None = None) -> str:
     """Build the user message with code chunks for extraction."""
     parts = []
+    if profile_guidance:
+        parts.append("Indexing profile guidance:")
+        parts.append(profile_guidance)
+        parts.append(
+            "For each saved pattern, include quality_score as a number from 0.0 to 1.0. "
+            "Use 0.8+ only for patterns that are clearly reusable outside this repository."
+        )
+        parts.append("")
     for i, chunk in enumerate(chunks):
         parts.append(f"--- CHUNK {i} ---")
         parts.append(f"File: {chunk.get('file_path', 'unknown')}")
@@ -124,13 +234,14 @@ def extract_patterns_sync(
     api_key: Optional[str] = None,
     model: Optional[str] = None,
     db_path: Optional[Path] = None,
+    profile_guidance: str | None = None,
 ) -> list[ExtractionResult]:
     """
     Extract patterns from a batch of code chunks using Claude.
     """
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.client import make_client, get_model as _get_model
+    from src.client import get_provider_name, make_client, get_model as _get_model
 
     try:
         client = make_client()
@@ -138,7 +249,8 @@ def extract_patterns_sync(
         raise RuntimeError(str(e))
 
     model = model or _get_model()
-    user_message = _build_extraction_message(chunks)
+    provider = get_provider_name()
+    user_message = _build_extraction_message(chunks, profile_guidance=profile_guidance)
 
     response = client.messages.create(
         model=model,
@@ -154,33 +266,8 @@ def extract_patterns_sync(
         user_message=user_message,
     )
 
-    # Parse the JSON response
-    text = response.content[0].text.strip()
-    # Strip markdown fences if present
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-
-    try:
-        results_raw = json.loads(text)
-    except json.JSONDecodeError:
-        # If Claude didn't return valid JSON, return empty
-        return []
-
-    results = []
-    for item in results_raw:
-        results.append(ExtractionResult(
-            chunk_index=item.get("chunk_index", 0),
-            is_pattern=item.get("is_pattern", False),
-            name=item.get("name", ""),
-            category=item.get("category", "general"),
-            tags=item.get("tags", []),
-            summary=item.get("summary", ""),
-            quality_signal=item.get("quality_signal", ""),
-        ))
-    return results
+    text = _extract_response_text(response, provider=provider, model=model)
+    return _parse_extraction_results(text, provider=provider, model=model)
 
 
 async def extract_patterns_async(
@@ -188,11 +275,12 @@ async def extract_patterns_async(
     api_key: Optional[str] = None,
     model: Optional[str] = None,
     db_path: Optional[Path] = None,
+    profile_guidance: str | None = None,
 ) -> list[ExtractionResult]:
     """Async version of extract_patterns_sync."""
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.client import make_async_client, get_model as _get_model
+    from src.client import get_provider_name, make_async_client, get_model as _get_model
 
     try:
         client = make_async_client()
@@ -200,7 +288,8 @@ async def extract_patterns_async(
         raise RuntimeError(str(e))
 
     model = model or _get_model()
-    user_message = _build_extraction_message(chunks)
+    provider = get_provider_name()
+    user_message = _build_extraction_message(chunks, profile_guidance=profile_guidance)
 
     response = await client.messages.create(
         model=model,
@@ -216,27 +305,5 @@ async def extract_patterns_async(
         user_message=user_message,
     )
 
-    text = response.content[0].text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
-
-    try:
-        results_raw = json.loads(text)
-    except json.JSONDecodeError:
-        return []
-
-    results = []
-    for item in results_raw:
-        results.append(ExtractionResult(
-            chunk_index=item.get("chunk_index", 0),
-            is_pattern=item.get("is_pattern", False),
-            name=item.get("name", ""),
-            category=item.get("category", "general"),
-            tags=item.get("tags", []),
-            summary=item.get("summary", ""),
-            quality_signal=item.get("quality_signal", ""),
-        ))
-    return results
+    text = _extract_response_text(response, provider=provider, model=model)
+    return _parse_extraction_results(text, provider=provider, model=model)

@@ -164,6 +164,7 @@ async def run_agent_turn_async(
     db_path: Optional[Path] = None,
     extra_roots: Optional[list[Path]] = None,
     session_id: Optional[int] = None,
+    repo_hint: Optional[str] = None,
 ):
     """
     Async version of run_agent_turn.
@@ -183,6 +184,10 @@ async def run_agent_turn_async(
         for t in TOOL_DEFINITIONS
     ]
 
+    effective_system = SYSTEM_PROMPT
+    if repo_hint:
+        effective_system = SYSTEM_PROMPT + f"\n\nREPO CONTEXT: The user is currently working with {repo_hint}. Treat it as the primary repository for all questions unless the user specifies otherwise. Use your tools to explore it proactively."
+
     current_messages = list(messages)
     rounds = 0
 
@@ -193,7 +198,7 @@ async def run_agent_turn_async(
             response = await client.messages.create(
                 model=model,
                 max_tokens=4096,
-                system=SYSTEM_PROMPT,
+                system=effective_system,
                 tools=tools,
                 messages=current_messages,
             )
@@ -206,7 +211,7 @@ async def run_agent_turn_async(
             model=model,
             response=response,
             messages=current_messages,
-            system=SYSTEM_PROMPT,
+            system=effective_system,
             session_id=session_id,
         )
 

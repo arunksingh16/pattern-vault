@@ -49,16 +49,26 @@ class PatternUpdate(BaseModel):
 
 @router.get("/patterns")
 def list_patterns(
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=500),
+    source_repo: Optional[str] = None,
     conn: sqlite3.Connection = Depends(get_db),
 ):
-    rows = conn.execute(
-        """SELECT id, name, category, language, tags, summary, source_repo,
-                  source_file, line_start, line_end, updated_at
-           FROM patterns ORDER BY updated_at DESC, id DESC LIMIT ?""",
-        (limit,),
-    ).fetchall()
     import json
+    if source_repo:
+        rows = conn.execute(
+            """SELECT id, name, category, language, tags, summary, source_repo,
+                      source_file, line_start, line_end, updated_at
+               FROM patterns WHERE source_repo = ?
+               ORDER BY updated_at DESC, id DESC LIMIT ?""",
+            (source_repo, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """SELECT id, name, category, language, tags, summary, source_repo,
+                      source_file, line_start, line_end, updated_at
+               FROM patterns ORDER BY updated_at DESC, id DESC LIMIT ?""",
+            (limit,),
+        ).fetchall()
     return [
         {**dict(row), "tags": json.loads(row["tags"])} for row in rows
     ]

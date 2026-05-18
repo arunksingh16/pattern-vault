@@ -7,6 +7,7 @@ grammars aren't available for a language.
 """
 
 import importlib
+from fnmatch import fnmatch
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -159,6 +160,54 @@ def scan_directory(root: str | Path) -> FileManifest:
 
     manifest.total_files = len(manifest.files)
     return manifest
+
+
+def filter_manifest(
+    manifest: FileManifest,
+    include_languages: list[str] | None = None,
+    include_paths: list[str] | None = None,
+    exclude_paths: list[str] | None = None,
+) -> FileManifest:
+    include_language_set = {
+        language.strip().lower()
+        for language in (include_languages or [])
+        if language.strip()
+    }
+    include_patterns = [pattern.strip() for pattern in (include_paths or []) if pattern.strip()]
+    exclude_patterns = [pattern.strip() for pattern in (exclude_paths or []) if pattern.strip()]
+
+    if not include_language_set and not include_patterns and not exclude_patterns:
+        return manifest
+
+    filtered_files: list[dict] = []
+    filtered_languages: dict[str, int] = {}
+    filtered_out = 0
+
+    for file_info in manifest.files:
+        relative_path = file_info["relative"].replace("\\", "/")
+        language = str(file_info["language"]).lower()
+
+        if include_language_set and language not in include_language_set:
+            filtered_out += 1
+            continue
+
+        if include_patterns and not any(fnmatch(relative_path, pattern) for pattern in include_patterns):
+            filtered_out += 1
+            continue
+
+        if exclude_patterns and any(fnmatch(relative_path, pattern) for pattern in exclude_patterns):
+            filtered_out += 1
+            continue
+
+        filtered_files.append(file_info)
+        filtered_languages[file_info["language"]] = filtered_languages.get(file_info["language"], 0) + 1
+
+    return FileManifest(
+        files=filtered_files,
+        total_files=len(filtered_files),
+        languages=filtered_languages,
+        skipped=manifest.skipped + filtered_out,
+    )
 
 
 def _get_symbol_name(node, source_bytes: bytes) -> str:

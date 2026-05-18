@@ -20,6 +20,7 @@ def cmd_index(args):
         directory=args.directory,
         repo_name=args.repo_name,
         dry_run=args.dry_run,
+        profile=args.profile,
         on_progress=lambda msg: print(f"  {msg}"),
     )
 
@@ -150,6 +151,12 @@ def main():
     p_index.add_argument("directory", help="Path to the directory to index")
     p_index.add_argument("--dry-run", action="store_true", help="Scan and chunk without calling Claude")
     p_index.add_argument("--repo-name", help="Name for the source repo")
+    p_index.add_argument(
+        "--profile",
+        choices=["curated", "balanced", "comprehensive"],
+        default="curated",
+        help="Indexing volume profile",
+    )
 
     # search
     p_search = subparsers.add_parser("search", help="Search for patterns")

@@ -326,6 +326,7 @@ async def reindex(
     path: str,
     repo_name: Optional[str] = None,
     dry_run: bool = False,
+    profile: str = "curated",
 ) -> str:
     """Scan a directory, extract code patterns using Claude, and store them.
 
@@ -336,6 +337,7 @@ async def reindex(
         path: Absolute path to the directory to index
         repo_name: Optional name for the source repo (defaults to directory name)
         dry_run: If true, scan and chunk but don't call Claude API or store
+        profile: Indexing volume profile: curated, balanced, or comprehensive
 
     Returns:
         Indexing statistics: files scanned, chunks extracted, patterns found/stored
@@ -348,6 +350,7 @@ async def reindex(
         db_path=DB_PATH,
         repo_name=repo_name,
         dry_run=dry_run,
+        profile=profile,
         on_progress=lambda msg: logs.append(msg),
     )
 
@@ -357,6 +360,7 @@ async def reindex(
         "chunks_extracted": stats.chunks_extracted,
         "patterns_found": stats.patterns_found,
         "patterns_stored": stats.patterns_stored,
+        "patterns_rejected": stats.patterns_rejected,
         "errors": stats.errors,
         "log": logs,
     }, indent=2)

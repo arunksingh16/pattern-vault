@@ -27,7 +27,10 @@ class ChatRequest(BaseModel):
 
 
 async def _event_stream(
-    messages: list[dict], session_id: int, extra_roots: Optional[list[Path]] = None
+    messages: list[dict],
+    session_id: int,
+    extra_roots: Optional[list[Path]] = None,
+    repo_hint: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     assistant_text = ""
     tool_calls: list[dict] = []
@@ -37,6 +40,7 @@ async def _event_stream(
         db_path=DB_PATH,
         extra_roots=extra_roots,
         session_id=session_id,
+        repo_hint=repo_hint,
     ):
         if event.get("type") == "text":
             assistant_text += event.get("content", "")
@@ -87,17 +91,22 @@ async def chat(request: ChatRequest):
         conn.close()
 
     extra_roots: list[Path] = []
+    repo_hint: Optional[str] = None
     if request.repo_context:
         conn2 = get_connection(DB_PATH)
         try:
             rec = get_cloned_repo(conn2, request.repo_context.owner, request.repo_context.repo)
             if rec and rec.get("local_path"):
                 extra_roots = [Path(rec["local_path"])]
+                repo_hint = (
+                    f"{request.repo_context.owner}/{request.repo_context.repo} "
+                    f"(local path: {rec['local_path']})"
+                )
         finally:
             conn2.close()
 
     response = StreamingResponse(
-        _event_stream(request.messages, session_id, extra_roots=extra_roots or None),
+        _event_stream(request.messages, session_id, extra_roots=extra_roots or None, repo_hint=repo_hint),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

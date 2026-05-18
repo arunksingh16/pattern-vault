@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-DB_VERSION = 7
+DB_VERSION = 9
 DEFAULT_DB_PATH = Path.home() / ".pattern-vault" / "patterns.db"
 DB_PATH_ENV = "PATTERN_VAULT_DB"
 
@@ -125,6 +125,10 @@ def init_db(conn: sqlite3.Connection) -> None:
             path TEXT NOT NULL,
             repo_name TEXT DEFAULT NULL,
             dry_run INTEGER NOT NULL DEFAULT 0,
+            index_profile TEXT NOT NULL DEFAULT 'curated',
+            include_languages_json TEXT NOT NULL DEFAULT '[]',
+            include_paths_json TEXT NOT NULL DEFAULT '[]',
+            exclude_paths_json TEXT NOT NULL DEFAULT '[]',
             status TEXT NOT NULL,
             stats_json TEXT NOT NULL DEFAULT '{}',
             error TEXT DEFAULT NULL,
@@ -201,6 +205,12 @@ def init_db(conn: sqlite3.Connection) -> None:
 
     if stored_version < 7:
         _migrate_to_v7(conn)
+
+    if stored_version < 8:
+        _migrate_to_v8(conn)
+
+    if stored_version < 9:
+        _migrate_to_v9(conn)
 
     conn.execute(
         "INSERT OR REPLACE INTO db_meta (key, value) VALUES ('version', ?)",
@@ -303,6 +313,34 @@ def _migrate_to_v7(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage_events(created_at DESC);
         CREATE INDEX IF NOT EXISTS idx_token_usage_provider_day ON token_usage_events(provider, created_at DESC);
     """)
+    conn.commit()
+
+
+def _migrate_to_v8(conn: sqlite3.Connection) -> None:
+    """Migrate DB from v7 → v8: persist index profile on jobs."""
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(index_jobs)").fetchall()]
+    if "index_profile" not in cols:
+        conn.execute(
+            "ALTER TABLE index_jobs ADD COLUMN index_profile TEXT NOT NULL DEFAULT 'curated'"
+        )
+    conn.commit()
+
+
+def _migrate_to_v9(conn: sqlite3.Connection) -> None:
+    """Migrate DB from v8 → v9: persist pre-index filters on jobs."""
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(index_jobs)").fetchall()]
+    if "include_languages_json" not in cols:
+        conn.execute(
+            "ALTER TABLE index_jobs ADD COLUMN include_languages_json TEXT NOT NULL DEFAULT '[]'"
+        )
+    if "include_paths_json" not in cols:
+        conn.execute(
+            "ALTER TABLE index_jobs ADD COLUMN include_paths_json TEXT NOT NULL DEFAULT '[]'"
+        )
+    if "exclude_paths_json" not in cols:
+        conn.execute(
+            "ALTER TABLE index_jobs ADD COLUMN exclude_paths_json TEXT NOT NULL DEFAULT '[]'"
+        )
     conn.commit()
 
 
@@ -865,6 +903,10 @@ def create_index_job(
     path: str,
     repo_name: Optional[str] = None,
     dry_run: bool = False,
+    index_profile: str = "curated",
+    include_languages: Optional[list[str]] = None,
+    include_paths: Optional[list[str]] = None,
+    exclude_paths: Optional[list[str]] = None,
     status: str = "queued",
     stats: Optional[dict] = None,
 ) -> str:
@@ -872,9 +914,10 @@ def create_index_job(
     conn.execute(
         """
         INSERT INTO index_jobs (
-            id, title, source_kind, path, repo_name, dry_run, status,
+            id, title, source_kind, path, repo_name, dry_run, index_profile,
+            include_languages_json, include_paths_json, exclude_paths_json, status,
             stats_json, error, created_at, started_at, finished_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?)
         """,
         (
             job_id,
@@ -883,6 +926,10 @@ def create_index_job(
             path,
             repo_name,
             1 if dry_run else 0,
+            index_profile,
+            json.dumps(include_languages or []),
+            json.dumps(include_paths or []),
+            json.dumps(exclude_paths or []),
             status,
             json.dumps(stats or {}),
             now,
@@ -954,7 +1001,9 @@ def append_index_job_event(conn: sqlite3.Connection, job_id: str, event: dict) -
 def get_index_job(conn: sqlite3.Connection, job_id: str) -> Optional[dict]:
     row = conn.execute(
         """
-        SELECT id, title, source_kind, path, repo_name, dry_run, status, stats_json, error,
+     SELECT id, title, source_kind, path, repo_name, dry_run, index_profile,
+         include_languages_json, include_paths_json, exclude_paths_json,
+         status, stats_json, error,
                created_at, started_at, finished_at, updated_at
         FROM index_jobs
         WHERE id = ?
@@ -967,6 +1016,10 @@ def get_index_job(conn: sqlite3.Connection, job_id: str) -> Optional[dict]:
     result = dict(row)
     result["job_id"] = result.pop("id")
     result["dry_run"] = bool(result["dry_run"])
+    result["profile"] = result.pop("index_profile")
+    result["include_languages"] = json.loads(result.pop("include_languages_json") or "[]")
+    result["include_paths"] = json.loads(result.pop("include_paths_json") or "[]")
+    result["exclude_paths"] = json.loads(result.pop("exclude_paths_json") or "[]")
     result["stats"] = json.loads(result.pop("stats_json") or "{}")
     return result
 
@@ -974,7 +1027,9 @@ def get_index_job(conn: sqlite3.Connection, job_id: str) -> Optional[dict]:
 def list_index_jobs(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
     rows = conn.execute(
         """
-        SELECT id, title, source_kind, path, repo_name, dry_run, status, stats_json, error,
+     SELECT id, title, source_kind, path, repo_name, dry_run, index_profile,
+         include_languages_json, include_paths_json, exclude_paths_json,
+         status, stats_json, error,
                created_at, started_at, finished_at, updated_at
         FROM index_jobs
         ORDER BY updated_at DESC
@@ -987,6 +1042,10 @@ def list_index_jobs(conn: sqlite3.Connection, limit: int = 20) -> list[dict]:
         result = dict(row)
         result["job_id"] = result.pop("id")
         result["dry_run"] = bool(result["dry_run"])
+        result["profile"] = result.pop("index_profile")
+        result["include_languages"] = json.loads(result.pop("include_languages_json") or "[]")
+        result["include_paths"] = json.loads(result.pop("include_paths_json") or "[]")
+        result["exclude_paths"] = json.loads(result.pop("exclude_paths_json") or "[]")
         result["stats"] = json.loads(result.pop("stats_json") or "{}")
         results.append(result)
     return results

@@ -7,12 +7,14 @@ Processes incrementally (skips unchanged files via content hash).
 
 import hashlib
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from ..indexer.chunker import CodeChunk, chunk_file, scan_directory
+from ..indexer.chunker import CodeChunk, chunk_file, filter_manifest, scan_directory
 from ..indexer.extractor import extract_patterns_sync
+from ..indexer.profiles import DEFAULT_INDEXING_PROFILE, get_indexing_profile
 from ..store.db import get_connection, init_db, insert_pattern
 
 
@@ -23,6 +25,7 @@ class IndexStats:
     chunks_extracted: int = 0
     patterns_found: int = 0
     patterns_stored: int = 0
+    patterns_rejected: int = 0
     errors: list[str] = None
 
     def __post_init__(self):
@@ -31,6 +34,8 @@ class IndexStats:
 
 
 BATCH_SIZE = 5  # chunks per Claude API call
+EXTRACTION_MAX_ATTEMPTS = 3
+EXTRACTION_BACKOFF_SECONDS = 1.0
 
 
 def index_directory(
@@ -40,6 +45,10 @@ def index_directory(
     api_key: Optional[str] = None,
     on_progress: Optional[Callable[[str], None]] = None,
     dry_run: bool = False,
+    profile: str = DEFAULT_INDEXING_PROFILE,
+    include_languages: Optional[list[str]] = None,
+    include_paths: Optional[list[str]] = None,
+    exclude_paths: Optional[list[str]] = None,
 ) -> IndexStats:
     """
     Index a directory: scan files, extract patterns, store them.
@@ -51,10 +60,15 @@ def index_directory(
         api_key: Anthropic API key (default: ANTHROPIC_API_KEY env var)
         on_progress: Callback for progress messages
         dry_run: If True, scan and chunk but don't call Claude or store
+        profile: Pattern volume profile: curated, balanced, or comprehensive
+        include_languages: Restrict indexing to these languages
+        include_paths: Glob patterns to include relative paths
+        exclude_paths: Glob patterns to exclude relative paths
     """
     stats = IndexStats()
     directory = Path(directory).resolve()
     repo_name = repo_name or directory.name
+    profile_config = get_indexing_profile(profile)
 
     def log(msg: str):
         if on_progress:
@@ -62,9 +76,25 @@ def index_directory(
 
     # Step 1: Scan
     log(f"Scanning {directory}...")
+    log(
+        f"Indexing profile: {profile_config.label} "
+        f"(min quality {profile_config.min_quality_score:.2f})"
+    )
     manifest = scan_directory(directory)
+    manifest = filter_manifest(
+        manifest,
+        include_languages=include_languages,
+        include_paths=include_paths,
+        exclude_paths=exclude_paths,
+    )
     log(f"Found {manifest.total_files} files ({manifest.skipped} skipped)")
     log(f"Languages: {json.dumps(manifest.languages)}")
+    if include_languages:
+        log(f"Language filter: {json.dumps(include_languages)}")
+    if include_paths:
+        log(f"Include path filters: {json.dumps(include_paths)}")
+    if exclude_paths:
+        log(f"Exclude path filters: {json.dumps(exclude_paths)}")
 
     if manifest.total_files == 0:
         log("No source files found.")
@@ -108,10 +138,24 @@ def index_directory(
         conn.close()
         return stats
 
+    pattern_budget = profile_config.budget_for_chunks(len(all_chunks))
+    if pattern_budget is not None:
+        log(f"Pattern budget: storing up to {pattern_budget} patterns for this profile.")
+
     # Step 4: Batch extract patterns via Claude
     for batch_start in range(0, len(all_chunks), BATCH_SIZE):
+        if pattern_budget is not None and stats.patterns_stored >= pattern_budget:
+            log(f"Pattern budget reached ({pattern_budget}); skipping remaining extraction.")
+            break
+
         batch = all_chunks[batch_start : batch_start + BATCH_SIZE]
-        log(f"Extracting patterns from chunks {batch_start + 1}-{batch_start + len(batch)}...")
+        batch_number = (batch_start // BATCH_SIZE) + 1
+        chunk_range_start = batch_start + 1
+        chunk_range_end = batch_start + len(batch)
+        batch_context = (
+            f"batch {batch_number} (chunks {chunk_range_start}-{chunk_range_end})"
+        )
+        log(f"Extracting patterns from chunks {chunk_range_start}-{chunk_range_end}...")
 
         chunk_dicts = []
         for _fi, chunk in batch:
@@ -125,14 +169,30 @@ def index_directory(
                 "line_end": chunk.line_end,
             })
 
-        try:
-            results = extract_patterns_sync(
-                chunk_dicts,
-                api_key=api_key,
-                db_path=db_path,
-            )
-        except Exception as e:
-            stats.errors.append(f"Extraction error at batch {batch_start}: {e}")
+        results = None
+        for attempt in range(1, EXTRACTION_MAX_ATTEMPTS + 1):
+            try:
+                results = extract_patterns_sync(
+                    chunk_dicts,
+                    api_key=api_key,
+                    db_path=db_path,
+                    profile_guidance=profile_config.guidance,
+                )
+                break
+            except Exception as e:
+                if attempt >= EXTRACTION_MAX_ATTEMPTS:
+                    stats.errors.append(
+                        f"Extraction error at {batch_context} after {attempt} attempts: {e}"
+                    )
+                    break
+
+                log(
+                    f"Retrying extraction for {batch_context} after attempt "
+                    f"{attempt}/{EXTRACTION_MAX_ATTEMPTS}: {e}"
+                )
+                time.sleep(EXTRACTION_BACKOFF_SECONDS * attempt)
+
+        if results is None:
             continue
 
         # Step 5: Store patterns
@@ -141,6 +201,18 @@ def index_directory(
                 continue
 
             stats.patterns_found += 1
+            if pattern_budget is not None and stats.patterns_stored >= pattern_budget:
+                stats.patterns_rejected += 1
+                continue
+
+            if not _passes_profile_quality(result.quality_score, profile_config.min_quality_score):
+                stats.patterns_rejected += 1
+                log(
+                    f"  Rejected: [{result.category}] {result.name or 'unnamed pattern'} "
+                    f"(quality below {profile_config.min_quality_score:.2f})"
+                )
+                continue
+
             idx = result.chunk_index
             if idx >= len(batch):
                 continue
@@ -166,6 +238,12 @@ def index_directory(
             except Exception as e:
                 stats.errors.append(f"Storage error for {result.name}: {e}")
 
+    if stats.patterns_rejected:
+        log(f"Rejected {stats.patterns_rejected} low-priority patterns by profile controls.")
     log(f"Done. Found {stats.patterns_found} patterns, stored {stats.patterns_stored}.")
     conn.close()
     return stats
+
+
+def _passes_profile_quality(quality_score: float | None, minimum: float) -> bool:
+    return quality_score is not None and quality_score >= minimum
