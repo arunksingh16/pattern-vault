@@ -20,6 +20,7 @@ def cmd_index(args):
         directory=args.directory,
         repo_name=args.repo_name,
         dry_run=args.dry_run,
+        profile=args.profile,
         on_progress=lambda msg: print(f"  {msg}"),
     )
 
@@ -85,7 +86,7 @@ def cmd_stats(args):
 
 
 def cmd_chat(args):
-    """Interactive chat with the agent (requires ANTHROPIC_API_KEY)."""
+    """Interactive chat with the agent using the configured model backend."""
     from .agent.orchestrator import run_agent_turn
 
     print("Pattern Vault — Interactive Analysis")
@@ -134,7 +135,9 @@ def cmd_serve(args):
 
     print("Starting Pattern Vault MCP server...")
     if args.transport == "http":
-        mcp.run(transport="streamable_http", port=args.port)
+        mcp.settings.host = args.host
+        mcp.settings.port = args.port
+        mcp.run(transport="streamable-http")
     else:
         mcp.run()
 
@@ -148,6 +151,12 @@ def main():
     p_index.add_argument("directory", help="Path to the directory to index")
     p_index.add_argument("--dry-run", action="store_true", help="Scan and chunk without calling Claude")
     p_index.add_argument("--repo-name", help="Name for the source repo")
+    p_index.add_argument(
+        "--profile",
+        choices=["curated", "balanced", "comprehensive"],
+        default="curated",
+        help="Indexing volume profile",
+    )
 
     # search
     p_search = subparsers.add_parser("search", help="Search for patterns")
@@ -165,6 +174,7 @@ def main():
 
     # serve
     p_serve = subparsers.add_parser("serve", help="Run MCP server")
+    p_serve.add_argument("--host", default="127.0.0.1", help="HTTP host")
     p_serve.add_argument("--port", type=int, default=8000, help="HTTP port")
     p_serve.add_argument("--transport", choices=["stdio", "http"], default="stdio", help="Transport type")
 

@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pattern Vault - Architecture & Workflows</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090c13;
+      --panel: #121722;
+      --panel-2: #171d2a;
+      --panel-3: #1c2433;
+      --line: #2b3548;
+      --muted: #8792a8;
+      --text: #eef2f8;
+      --soft: #c6cfdd;
+      --focus: #f1c232;
+      --focus-2: #33c3f0;
+      --dim: 0.18;
+      --radius: 8px;
+      --shadow: 0 20px 60px rgba(0, 0, 0, 0.32);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-width: 1430px;
+      margin: 0;
+      background: radial-gradient(circle at 70% 0%, rgba(54, 75, 112, 0.22), transparent 34%), var(--bg);
+      color: var(--text);
+    }
+
+    .page {
+      display: grid;
+      grid-template-columns: minmax(1050px, 1fr) 330px;
+      gap: 16px;
+      min-height: 100vh;
+      padding: 18px;
+    }
+
+    header {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 21px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .lede {
+      max-width: 900px;
+      margin: 8px 0 0;
+      color: var(--soft);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px 12px;
+      max-width: 720px;
+      padding-top: 4px;
+      color: var(--soft);
+      font-size: 11px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .swatch {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      background: var(--color);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
+    }
+
+    .canvas-panel,
+    .side-panel {
+      background: rgba(18, 23, 34, 0.86);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .canvas-panel {
+      position: relative;
+      min-height: 655px;
+      overflow: hidden;
+    }
+
+    .diagram {
+      position: relative;
+      height: 655px;
+    }
+
+    .lane {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      border-right: 1px dashed rgba(111, 126, 154, 0.14);
+      background: linear-gradient(90deg, rgba(255,255,255,0.018), transparent);
+      z-index: 0;
+    }
+
+    .lane:first-child {
+      border-left: 0;
+    }
+
+    .lane-label {
+      position: absolute;
+      top: 16px;
+      left: 20px;
+      color: rgba(198, 207, 221, 0.42);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    svg.connections {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      overflow: visible;
+      z-index: 1;
+    }
+
+    .node {
+      position: absolute;
+      width: 132px;
+      height: 52px;
+      padding: 10px 11px;
+      border: 1px solid color-mix(in srgb, var(--color) 52%, var(--line));
+      border-left: 3px solid var(--color);
+      border-radius: 6px;
+      background: rgba(23, 29, 42, 0.88);
+      transition: opacity 180ms ease, transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+      cursor: default;
+      overflow: hidden;
+      z-index: 2;
+    }
+
+    .node.active {
+      border-color: var(--focus);
+      border-left-color: var(--focus);
+      background: rgba(37, 35, 24, 0.96);
+      box-shadow: 0 0 0 1px rgba(241, 194, 50, 0.55), 0 0 24px rgba(241, 194, 50, 0.16);
+      transform: translateY(-1px);
+      z-index: 3;
+    }
+
+    .node.dim,
+    .edge.dim,
+    .step-marker.dim {
+      opacity: var(--dim);
+    }
+
+    .node-name {
+      font-size: 13px;
+      font-weight: 760;
+      line-height: 1.2;
+    }
+
+    .node-detail {
+      margin-top: 4px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      line-height: 1.25;
+    }
+
+    .edge path {
+      fill: none;
+      stroke: rgba(119, 136, 164, 0.38);
+      stroke-width: 2;
+      transition: opacity 180ms ease, stroke 180ms ease, stroke-width 180ms ease;
+    }
+
+    .edge.active path {
+      stroke: var(--focus);
+      stroke-width: 2.6;
+      filter: drop-shadow(0 0 4px rgba(241, 194, 50, 0.38));
+    }
+
+    .edge-label {
+      fill: rgba(198, 207, 221, 0.74);
+      font-size: 10px;
+      font-weight: 650;
+      paint-order: stroke;
+      stroke: rgba(9, 12, 19, 0.92);
+      stroke-width: 5px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .edge.active .edge-label {
+      fill: #ffe181;
+    }
+
+    .step-marker {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      width: 21px;
+      height: 21px;
+      border-radius: 999px;
+      background: var(--focus);
+      color: #17130a;
+      font-size: 11px;
+      font-weight: 900;
+      box-shadow: 0 0 0 3px rgba(9, 12, 19, 0.8), 0 0 16px rgba(241, 194, 50, 0.3);
+      z-index: 4;
+      pointer-events: none;
+    }
+
+    .side-panel {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      min-height: 655px;
+      overflow: hidden;
+    }
+
+    .panel-section {
+      padding: 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-section:last-child {
+      border-bottom: 0;
+      overflow: auto;
+    }
+
+    .panel-title {
+      margin: 0 0 10px;
+      color: rgba(198, 207, 221, 0.64);
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .flow-list {
+      display: grid;
+      gap: 7px;
+    }
+
+    button.flow-button {
+      appearance: none;
+      width: 100%;
+      padding: 10px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(18, 23, 34, 0.78);
+      color: var(--text);
+      text-align: left;
+      cursor: pointer;
+      transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+    }
+
+    button.flow-button:hover,
+    button.flow-button:focus-visible {
+      border-color: rgba(241, 194, 50, 0.62);
+      outline: none;
+    }
+
+    button.flow-button.selected {
+      border-color: var(--focus);
+      background: rgba(43, 37, 18, 0.78);
+      box-shadow: inset 3px 0 0 var(--focus);
+    }
+
+    .flow-name {
+      display: block;
+      font-size: 12px;
+      font-weight: 820;
+      line-height: 1.25;
+    }
+
+    .flow-summary {
+      display: block;
+      margin-top: 4px;
+      color: var(--soft);
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+    }
+
+    .utility-button {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--soft);
+      padding: 7px 9px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+
+    .utility-button:hover,
+    .utility-button:focus-visible {
+      border-color: var(--focus-2);
+      color: var(--text);
+      outline: none;
+    }
+
+    .flow-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .metric {
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(28, 36, 51, 0.72);
+    }
+
+    .metric strong {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 15px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .steps {
+      display: grid;
+      gap: 9px;
+    }
+
+    .step-card {
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(28, 36, 51, 0.72);
+    }
+
+    .step-head {
+      display: grid;
+      grid-template-columns: 22px 1fr;
+      gap: 8px;
+      align-items: start;
+      margin-bottom: 7px;
+    }
+
+    .step-num {
+      display: grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      background: var(--focus);
+      color: #17130a;
+      font-size: 10px;
+      font-weight: 900;
+    }
+
+    .step-title {
+      font-size: 12px;
+      font-weight: 810;
+      line-height: 1.32;
+    }
+
+    .step-body {
+      color: var(--soft);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .step-payload {
+      margin-top: 8px;
+      padding: 8px;
+      border-radius: 5px;
+      background: rgba(9, 12, 19, 0.62);
+      color: #b7f2ff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .json-panel {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 330px;
+      gap: 16px;
+      align-items: start;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(18, 23, 34, 0.82);
+      overflow: hidden;
+    }
+
+    summary {
+      padding: 12px 14px;
+      color: var(--soft);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 760;
+    }
+
+    pre {
+      max-height: 340px;
+      margin: 0;
+      padding: 14px;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+      background: rgba(5, 7, 11, 0.62);
+      color: #c7d7ff;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .notes {
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(18, 23, 34, 0.82);
+      color: var(--soft);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .notes strong {
+      color: var(--text);
+    }
+  </style>
+</head>
+<body>
+  <script id="workflow-data" type="application/json">
+{
+  "title": "Pattern Vault - Architecture & Workflows",
+  "description": "All primary packages and components are rendered from this JSON. Select a flow to highlight the package path and see what is passed at each step.",
+  "lanes": [
+    {"id": "actors", "label": "Actors", "color": "#de5bb8"},
+    {"id": "surfaces", "label": "Client Surfaces", "color": "#2f8ad8"},
+    {"id": "agent", "label": "Agent Runtime", "color": "#9b6ee8"},
+    {"id": "indexing", "label": "Indexing Pipeline", "color": "#f2a429"},
+    {"id": "storage", "label": "Storage / Data", "color": "#32c28a"},
+    {"id": "model", "label": "Model Clients", "color": "#28b9d4"},
+    {"id": "external", "label": "External Services", "color": "#8090aa"}
+  ],
+  "components": [
+    {"id": "user", "lane": "actors", "name": "You / User", "detail": "terminal, browser", "role": "Starts CLI commands, UI chats, and direct pattern searches.", "order": 1},
+    {"id": "claude_code", "lane": "actors", "name": "Claude Code", "detail": "MCP client", "role": "Calls Pattern Vault tools through the MCP server.", "order": 2},
+    {"id": "repo", "lane": "actors", "name": "Source Repo", "detail": "/path/to/repo", "role": "Repository being scanned, parsed, or analysed.", "order": 3},
+    {"id": "cli", "lane": "surfaces", "name": "CLI", "detail": "src/cli.py", "role": "Commands: index, search, stats, chat, serve.", "order": 1},
+    {"id": "chainlit", "lane": "surfaces", "name": "Chainlit UI", "detail": "src/ui/app.py", "role": "Legacy browser chat with tool-call steps and MCP status.", "order": 2},
+    {"id": "react_ui", "lane": "surfaces", "name": "React UI + BFF", "detail": "web/ + src/api/", "role": "Vite+React frontend. FastAPI BFF with SSE chat, patterns, stats, history, insights, usage, workspace, and MCP-monitor APIs. Panels: PatternBrowser, ChatPanel, HistoryPanel, IngestionPanel, InsightsPanel, UsagePanel, VaultPanel, MCPPanel, SettingsPanel.", "order": 3},
+    {"id": "mcp", "lane": "surfaces", "name": "MCP Server", "detail": "src/server/mcp_server.py", "role": "FastMCP tools for search, get, add, stats, tags, insights, reindex.", "order": 4},
+    {"id": "orchestrator", "lane": "agent", "name": "Agent Orchestrator", "detail": "src/agent/orchestrator.py", "role": "Claude tool-use loop with a max of 15 rounds per turn.", "order": 1},
+    {"id": "agent_tools", "lane": "agent", "name": "Agent Tools", "detail": "src/agent/tools.py", "role": "scan_directory, read_file, parse_symbols, save_pattern, save_insight, search_patterns, vault_stats.", "order": 2},
+    {"id": "workspace_guard", "lane": "agent", "name": "Workspace Guards", "detail": "PATTERN_VAULT_WORKSPACE_ROOTS", "role": "Limits file tools to configured roots and blocks sensitive paths.", "order": 3},
+    {"id": "batch", "lane": "indexing", "name": "Batch Indexer", "detail": "src/indexer/batch.py", "role": "Orchestrates scan -> chunk -> extract -> store and tracks IndexStats.", "order": 1},
+    {"id": "chunker", "lane": "indexing", "name": "Scanner + Chunker", "detail": "src/indexer/chunker.py", "role": "Finds source files and extracts functions/classes using tree-sitter.", "order": 2},
+    {"id": "extractor", "lane": "indexing", "name": "Pattern Extractor", "detail": "src/indexer/extractor.py", "role": "Batches chunks and asks Claude to classify reusable patterns.", "order": 3},
+    {"id": "profiles", "lane": "indexing", "name": "Indexing Profiles", "detail": "src/indexer/profiles.py", "role": "curated / balanced / comprehensive profiles set min quality score and per-repo-size chunk budgets. Passed into the batch indexer to gate extraction volume.", "order": 4},
+    {"id": "store", "lane": "storage", "name": "Store API", "detail": "src/store/db.py", "role": "SQLite schema, CRUD, FTS search, content-hash deduplication.", "order": 1},
+    {"id": "sqlite", "lane": "storage", "name": "SQLite DB", "detail": "~/.pattern-vault/patterns.db", "role": "patterns, chunks, repo_insights, chat_sessions, chat_messages, db_meta.", "order": 2},
+    {"id": "fts", "lane": "storage", "name": "FTS5 Index", "detail": "patterns_fts", "role": "Full-text search over names, summaries, tags, categories, languages.", "order": 3},
+    {"id": "client_factory", "lane": "model", "name": "Client Factory", "detail": "src/client.py", "role": "Selects Anthropic, Bedrock, Bifrost, or Ollama from PATTERN_VAULT_BACKEND. Wraps Ollama via an OpenAI-compatible adapter that translates Anthropic tool-use messages.", "order": 1},
+    {"id": "anthropic", "lane": "external", "name": "Anthropic API", "detail": "ANTHROPIC_API_KEY", "role": "Direct Claude backend.", "order": 1},
+    {"id": "bedrock", "lane": "external", "name": "AWS Bedrock", "detail": "PATTERN_VAULT_BACKEND=bedrock", "role": "Claude through AnthropicBedrock.", "order": 2},
+    {"id": "bifrost", "lane": "external", "name": "Bifrost Proxy", "detail": "BIFROST_URL", "role": "Anthropic-compatible proxy backend.", "order": 3},
+    {"id": "ollama", "lane": "external", "name": "Ollama", "detail": "PATTERN_VAULT_BACKEND=ollama", "role": "Local model serving via OpenAI-compatible endpoint. Wrapped by _OllamaCompatClient to translate Anthropic tool-use call/result format.", "order": 4}
+  ],
+  "flows": [
+    {
+      "id": "pattern-find",
+      "name": "pattern find",
+      "summary": "Search the vault from CLI, UI, or MCP and return compact pattern summaries; get full code by ID when needed.",
+      "entry": "python -m src.cli search \"retry with backoff\" or MCP search_patterns",
+      "edges": [
+        {"from": "user", "to": "cli", "label": "search query"},
+        {"from": "claude_code", "to": "mcp", "label": "search_patterns"},
+        {"from": "chainlit", "to": "agent_tools", "label": "search_patterns shortcut"},
+        {"from": "cli", "to": "store", "label": "search_fts(query, filters)"},
+        {"from": "mcp", "to": "store", "label": "search_fts(limit)"},
+        {"from": "agent_tools", "to": "store", "label": "search_fts"},
+        {"from": "store", "to": "fts", "label": "MATCH terms"},
+        {"from": "fts", "to": "sqlite", "label": "join patterns"},
+        {"from": "sqlite", "to": "store", "label": "rows + rank"},
+        {"from": "store", "to": "cli", "label": "summaries"},
+        {"from": "store", "to": "mcp", "label": "JSON results"},
+        {"from": "store", "to": "chainlit", "label": "pattern list/detail"}
+      ],
+      "steps": [
+        {"node": "user", "title": "User asks for a pattern", "body": "A query such as retry, auth middleware, or data access enters through the CLI, Chainlit UI, or an MCP client.", "payload": "query: \"retry with backoff\""},
+        {"node": "cli", "title": "Surface normalizes filters", "body": "The CLI command accepts query text plus optional category, language, limit, and full-code flags.", "payload": "category?: string\nlanguage?: string\nlimit: 10"},
+        {"node": "store", "title": "Store builds an FTS query", "body": "src/store/db.py quotes each query term and combines terms with OR before applying category and language filters.", "payload": "patterns_fts MATCH '\"retry\" OR \"backoff\"'"},
+        {"node": "fts", "title": "FTS5 ranks matches", "body": "The virtual table searches pattern name, summary, tags, category, and language, then ranks with BM25.", "payload": "bm25(patterns_fts) AS rank"},
+        {"node": "sqlite", "title": "Pattern metadata comes back", "body": "The FTS row is joined to patterns so callers receive IDs, names, summaries, tags, language, category, and source file.", "payload": "{id, name, category, language, tags, summary, source_file}"},
+        {"node": "mcp", "title": "Full code is a second hop", "body": "MCP clients call get_pattern with an ID to fetch chunks and complete metadata only after selecting a compact result.", "payload": "get_pattern(pattern_id)"}
+      ]
+    },
+    {
+      "id": "storage",
+      "name": "storage",
+      "summary": "Persist a manually identified pattern or repo insight into SQLite with deduplication and FTS trigger updates.",
+      "entry": "MCP add_pattern, agent save_pattern/save_insight, or batch index storage",
+      "edges": [
+        {"from": "claude_code", "to": "mcp", "label": "add_pattern / save_insight"},
+        {"from": "chainlit", "to": "orchestrator", "label": "agent conversation"},
+        {"from": "orchestrator", "to": "agent_tools", "label": "tool_use"},
+        {"from": "agent_tools", "to": "store", "label": "insert_pattern / insert_insight"},
+        {"from": "mcp", "to": "store", "label": "insert_pattern / insert_insight"},
+        {"from": "batch", "to": "store", "label": "insert extracted pattern"},
+        {"from": "store", "to": "sqlite", "label": "patterns + chunks"},
+        {"from": "sqlite", "to": "fts", "label": "triggers sync FTS"},
+        {"from": "store", "to": "mcp", "label": "pattern_id / insight_id"},
+        {"from": "store", "to": "chainlit", "label": "saved confirmation"}
+      ],
+      "steps": [
+        {"node": "agent_tools", "title": "Save request arrives", "body": "The payload includes name, summary, code_text, category, language, optional tags, quality signal, and source metadata.", "payload": "{name, summary, code_text, category, language, tags[]}"},
+        {"node": "store", "title": "Content hash deduplicates", "body": "insert_pattern hashes code_text and returns the existing pattern ID if the same implementation is already stored.", "payload": "sha256(code_text)[:16]"},
+        {"node": "sqlite", "title": "Pattern and chunk are inserted", "body": "Metadata lands in patterns; implementation code lands in chunks with a foreign key to the pattern.", "payload": "patterns(id, name, category, tags, source_file)\nchunks(pattern_id, code_text)"},
+        {"node": "fts", "title": "Search index stays current", "body": "SQLite triggers insert, delete, or update the FTS5 table whenever the patterns table changes.", "payload": "patterns_ai / patterns_ad / patterns_au"},
+        {"node": "mcp", "title": "Caller receives IDs", "body": "The caller gets a JSON confirmation containing the stored pattern or insight identifier.", "payload": "{\"status\":\"stored\",\"pattern_id\":42}"}
+      ]
+    },
+    {
+      "id": "repo-index",
+      "name": "repo indexing",
+      "summary": "Scan a repository, chunk source files, ask Claude which chunks are reusable patterns, and store the accepted results.",
+      "entry": "python -m src.cli index /path/to/repo or MCP reindex",
+      "edges": [
+        {"from": "user", "to": "cli", "label": "index /path/to/repo"},
+        {"from": "claude_code", "to": "mcp", "label": "reindex(path)"},
+        {"from": "cli", "to": "batch", "label": "index_directory"},
+        {"from": "mcp", "to": "batch", "label": "reindex -> index_directory"},
+        {"from": "batch", "to": "repo", "label": "resolve repo path"},
+        {"from": "batch", "to": "chunker", "label": "scan_directory"},
+        {"from": "chunker", "to": "repo", "label": "read source files"},
+        {"from": "chunker", "to": "batch", "label": "CodeChunk[]"},
+        {"from": "batch", "to": "store", "label": "check content_hash"},
+        {"from": "batch", "to": "profiles", "label": "apply profile"},
+        {"from": "profiles", "to": "batch", "label": "budget + min_quality"},
+        {"from": "batch", "to": "extractor", "label": "chunks in batches of 5"},
+        {"from": "extractor", "to": "client_factory", "label": "make_client + model"},
+        {"from": "client_factory", "to": "anthropic", "label": "default"},
+        {"from": "client_factory", "to": "bedrock", "label": "backend option"},
+        {"from": "client_factory", "to": "bifrost", "label": "backend option"},
+        {"from": "client_factory", "to": "ollama", "label": "backend option"},
+        {"from": "extractor", "to": "batch", "label": "ExtractionResult[]"},
+        {"from": "batch", "to": "store", "label": "insert accepted patterns"},
+        {"from": "store", "to": "sqlite", "label": "persist metadata + chunks"},
+        {"from": "sqlite", "to": "fts", "label": "trigger FTS sync"}
+      ],
+      "steps": [
+        {"node": "cli", "title": "Index command starts", "body": "The CLI passes the directory, optional repo name, dry-run flag, and progress callback into index_directory.", "payload": "directory, repo_name?, dry_run"},
+        {"node": "chunker", "title": "Scanner builds a manifest", "body": "The chunker walks the repo, skips generated or sensitive-heavy directories, maps extensions to languages, and records file sizes.", "payload": "FileManifest{files, languages, skipped}"},
+        {"node": "chunker", "title": "Tree-sitter extracts symbols", "body": "Supported languages produce semantic chunks for functions, classes, methods, interfaces, and similar symbols. Unsupported parsers fall back to blank-line chunks.", "payload": "CodeChunk{symbol_name, code, file_path, line_start, line_end}"},
+        {"node": "batch", "title": "Indexing profile sets the budget", "body": "The batch indexer resolves a curated / balanced / comprehensive profile that caps stored pattern count and sets a minimum quality score threshold.", "payload": "curated: budget 25-100, min_quality 0.8\nbalanced: budget 50-200, min_quality 0.65\ncomprehensive: budget 100-500, min_quality 0.5"},
+        {"node": "batch", "title": "Already stored chunks are skipped", "body": "The batch indexer checks content_hash against patterns before sending code to the model.", "payload": "SELECT id FROM patterns WHERE content_hash = ?"},
+        {"node": "extractor", "title": "Claude classifies reuse value", "body": "Chunks are sent in batches of five with a strict JSON prompt asking whether each chunk is a reusable pattern and which category/tags apply.", "payload": "ExtractionResult{is_pattern, category, tags, summary}"},
+        {"node": "store", "title": "Only accepted patterns are stored", "body": "Patterns marked is_pattern=true are inserted with source repo, file path, and line metadata for future retrieval.", "payload": "source_repo, source_file, line_start, line_end"}
+      ]
+    },
+    {
+      "id": "agent-analysis",
+      "name": "agent analysis",
+      "summary": "Run an interactive Claude tool-use loop that scans, reads, parses, searches, and optionally saves patterns.",
+      "entry": "python -m src.cli chat or chainlit run src/ui/app.py",
+      "edges": [
+        {"from": "user", "to": "chainlit", "label": "chat message"},
+        {"from": "user", "to": "cli", "label": "chat command"},
+        {"from": "chainlit", "to": "orchestrator", "label": "same tool loop shape"},
+        {"from": "cli", "to": "orchestrator", "label": "run_agent_turn"},
+        {"from": "orchestrator", "to": "client_factory", "label": "Claude messages API"},
+        {"from": "client_factory", "to": "anthropic", "label": "or selected backend"},
+        {"from": "client_factory", "to": "ollama", "label": "local models"},
+        {"from": "orchestrator", "to": "agent_tools", "label": "tool calls"},
+        {"from": "agent_tools", "to": "workspace_guard", "label": "validate path"},
+        {"from": "workspace_guard", "to": "repo", "label": "allowed file access"},
+        {"from": "agent_tools", "to": "chunker", "label": "scan / parse"},
+        {"from": "agent_tools", "to": "store", "label": "search / save / stats"},
+        {"from": "store", "to": "sqlite", "label": "read/write vault"},
+        {"from": "chainlit", "to": "sqlite", "label": "chat history (SQLite)"}
+      ],
+      "steps": [
+        {"node": "orchestrator", "title": "Conversation is sent to Claude", "body": "The system prompt tells Claude to inspect repos, call tools proactively, and save only genuinely reusable patterns.", "payload": "SYSTEM_PROMPT + messages + TOOL_DEFINITIONS"},
+        {"node": "client_factory", "title": "Backend is selected at runtime", "body": "Environment variables switch between Anthropic direct, AWS Bedrock, and Bifrost without changing caller code.", "payload": "PATTERN_VAULT_BACKEND"},
+        {"node": "agent_tools", "title": "Claude chooses tool calls", "body": "Tool calls can scan a directory, read a file, parse symbols, search the vault, save a pattern, save an insight, or fetch stats.", "payload": "scan_directory | read_file | parse_symbols | save_pattern"},
+        {"node": "workspace_guard", "title": "File access is constrained", "body": "Paths must be under configured workspace roots, not sensitive filenames or blocked path parts, and source files must fit size and language limits.", "payload": "PATTERN_VAULT_WORKSPACE_ROOTS"},
+        {"node": "chainlit", "title": "UI shows steps", "body": "The Chainlit app wraps tool calls in visible steps and persists a best-effort JSONL transcript.", "payload": "role, content, tool_input, tool_result"}
+      ]
+    },
+    {
+      "id": "mcp-tooling",
+      "name": "mcp tools",
+      "summary": "Expose the vault to Claude Code through FastMCP with read-only hints, write tools, and optional HTTP serving.",
+      "entry": "python src/server/mcp_server.py or python -m src.cli serve",
+      "edges": [
+        {"from": "claude_code", "to": "mcp", "label": "MCP tool invocation"},
+        {"from": "user", "to": "cli", "label": "serve command"},
+        {"from": "cli", "to": "mcp", "label": "mcp.run"},
+        {"from": "mcp", "to": "store", "label": "tool functions"},
+        {"from": "store", "to": "sqlite", "label": "vault DB"},
+        {"from": "mcp", "to": "batch", "label": "reindex"},
+        {"from": "batch", "to": "chunker", "label": "scan/chunk"},
+        {"from": "batch", "to": "extractor", "label": "classify"},
+        {"from": "extractor", "to": "client_factory", "label": "model backend"},
+        {"from": "client_factory", "to": "ollama", "label": "backend option"}
+      ],
+      "steps": [
+        {"node": "mcp", "title": "FastMCP registers eight tools", "body": "search_patterns, get_pattern, add_pattern, save_insight, list_tags, list_categories, vault_stats, and reindex are exposed to MCP clients.", "payload": "mcp = FastMCP(\"pattern_vault_mcp\")"},
+        {"node": "mcp", "title": "Tool annotations express intent", "body": "Read-only and idempotent hints distinguish search/list/stats tools from write tools like add_pattern and save_insight.", "payload": "readOnlyHint, destructiveHint, idempotentHint"},
+        {"node": "store", "title": "Most tools are store wrappers", "body": "MCP tools open a connection, initialize schema if needed, run a store function, serialize JSON, then close the connection.", "payload": "_get_conn() -> init_db(conn)"},
+        {"node": "batch", "title": "reindex bridges into the full pipeline", "body": "The reindex tool is the one MCP entry point that invokes the batch indexer and model-backed extraction path.", "payload": "{files_scanned, chunks_extracted, patterns_stored, errors}"}
+      ]
+    },
+    {
+      "id": "ui-browse",
+      "name": "view saved patterns",
+      "summary": "Browse recent patterns in Chainlit, open full code, inspect MCP status, and write chat history.",
+      "entry": "Chainlit welcome actions and simple chat commands",
+      "edges": [
+        {"from": "user", "to": "chainlit", "label": "View saved patterns"},
+        {"from": "chainlit", "to": "store", "label": "_load_patterns / get_pattern"},
+        {"from": "store", "to": "sqlite", "label": "SELECT recent patterns"},
+        {"from": "sqlite", "to": "store", "label": "rows"},
+        {"from": "store", "to": "chainlit", "label": "formatted markdown"},
+        {"from": "chainlit", "to": "mcp", "label": "local tool registry introspection"},
+        {"from": "chainlit", "to": "sqlite", "label": "session history"}
+      ],
+      "steps": [
+        {"node": "chainlit", "title": "Welcome actions shortcut common tasks", "body": "The UI exposes buttons for saved patterns, history path, and MCP server status before the user types anything.", "payload": "show_patterns | show_history_path | show_mcp_status"},
+        {"node": "store", "title": "Recent patterns are loaded", "body": "The UI queries the newest pattern metadata and renders a markdown table with action buttons for the first few IDs.", "payload": "ORDER BY updated_at DESC, id DESC LIMIT 25"},
+        {"node": "sqlite", "title": "Opening a pattern fetches chunks", "body": "get_pattern joins pattern metadata with stored code chunks so the UI can render full source details.", "payload": "chunks: [{id, code_text, chunk_type}]"},
+        {"node": "sqlite", "title": "Session events are persisted", "body": "Chat messages, tool calls, and results are stored in chat_sessions and chat_messages tables in SQLite for history browsing.", "payload": "chat_sessions + chat_messages tables"}
+      ]
+    },
+    {
+      "id": "backend-routing",
+      "name": "model backend routing",
+      "summary": "Use one Anthropic-compatible client factory to route extraction and agent turns to Anthropic, Bedrock, Bifrost, or Ollama.",
+      "entry": "PATTERN_VAULT_BACKEND and PATTERN_VAULT_MODEL",
+      "edges": [
+        {"from": "extractor", "to": "client_factory", "label": "extract_patterns_sync/async"},
+        {"from": "orchestrator", "to": "client_factory", "label": "run_agent_turn"},
+        {"from": "chainlit", "to": "client_factory", "label": "make_async_client"},
+        {"from": "client_factory", "to": "anthropic", "label": "default direct"},
+        {"from": "client_factory", "to": "bedrock", "label": "AnthropicBedrock"},
+        {"from": "client_factory", "to": "bifrost", "label": "base_url proxy"},
+        {"from": "client_factory", "to": "ollama", "label": "OpenAI-compat adapter"},
+        {"from": "client_factory", "to": "chainlit", "label": "describe_backend"}
+      ],
+      "steps": [
+        {"node": "client_factory", "title": "Backend is read from environment", "body": "get_backend defaults to anthropic and accepts bedrock or bifrost as alternatives.", "payload": "PATTERN_VAULT_BACKEND"},
+        {"node": "client_factory", "title": "Model ID is backend-aware", "body": "Bedrock uses a Bedrock-style model ID; Anthropic direct and Bifrost use native Anthropic model IDs unless overridden.", "payload": "PATTERN_VAULT_MODEL"},
+        {"node": "anthropic", "title": "Direct mode requires an API key", "body": "The default path creates anthropic.Anthropic or AsyncAnthropic with ANTHROPIC_API_KEY.", "payload": "ANTHROPIC_API_KEY"},
+        {"node": "bedrock", "title": "Bedrock mode uses AWS credentials", "body": "The factory creates AnthropicBedrock clients with AWS keys, optional session token, and AWS_REGION.", "payload": "AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION"},
+        {"node": "bifrost", "title": "Bifrost mode swaps base URL", "body": "The proxy backend uses BIFROST_URL and a configurable placeholder API key.", "payload": "BIFROST_URL, BIFROST_API_KEY"},
+        {"node": "ollama", "title": "Ollama mode wraps OpenAI-compatible endpoint", "body": "_OllamaCompatClient translates Anthropic messages.create calls into OpenAI chat-completions requests, mapping tool-use blocks to function-call format and back.", "payload": "OLLAMA_BASE_URL (default: http://localhost:11434/v1)\nOLLAMA_API_KEY (default: ollama)\nPATTERN_VAULT_MODEL=qwen2.5-coder:7b"}
+      ]
+    }
+  ]
+}
+  </script>
+
+  <main class="page">
+    <header>
+      <div>
+        <h1 id="title">Pattern Vault - Architecture & Workflows</h1>
+        <p id="description" class="lede"></p>
+      </div>
+      <div id="legend" class="legend" aria-label="Diagram legend"></div>
+    </header>
+
+    <section class="canvas-panel" aria-label="Workflow diagram">
+      <div id="diagram" class="diagram">
+        <svg id="connections" class="connections" aria-hidden="true"></svg>
+      </div>
+    </section>
+
+    <aside class="side-panel" aria-label="Flow controls and steps">
+      <section class="panel-section">
+        <h2 class="panel-title">Flows</h2>
+        <div id="flowList" class="flow-list"></div>
+      </section>
+      <section class="panel-section">
+        <div class="toolbar">
+          <button id="clearButton" class="utility-button" type="button">Clear selection</button>
+          <button id="jsonButton" class="utility-button" type="button">Show JSON</button>
+        </div>
+        <div class="flow-meta">
+          <div class="metric"><strong id="nodeCount">0</strong><span>Components</span></div>
+          <div class="metric"><strong id="stepCount">0</strong><span>Steps</span></div>
+        </div>
+      </section>
+      <section class="panel-section">
+        <h2 class="panel-title">Steps</h2>
+        <div id="steps" class="steps"></div>
+      </section>
+    </aside>
+
+    <section class="json-panel">
+      <details id="jsonDetails">
+        <summary>Workflow JSON model</summary>
+        <pre id="jsonOutput"></pre>
+      </details>
+      <div class="notes">
+        <strong>How to maintain this page:</strong> edit the JSON inside <code>&lt;script id="workflow-data"&gt;</code>. Add lanes, components, and flow edges there; the diagram, buttons, arrows, markers, labels, and step cards are all generated from that model.
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const data = JSON.parse(document.getElementById("workflow-data").textContent);
+
+    const state = {
+      selectedFlowId: data.flows[0]?.id || null,
+      nodeMap: new Map(data.components.map((component) => [component.id, component])),
+      laneMap: new Map(data.lanes.map((lane) => [lane.id, lane])),
+      positions: new Map(),
+      dimensions: { width: 0, height: 655 }
+    };
+
+    const diagram = document.getElementById("diagram");
+    const svg = document.getElementById("connections");
+    const flowList = document.getElementById("flowList");
+    const stepsContainer = document.getElementById("steps");
+    const legend = document.getElementById("legend");
+
+    function laneColor(laneId) {
+      return state.laneMap.get(laneId)?.color || "#8090aa";
+    }
+
+    function selectedFlow() {
+      return data.flows.find((flow) => flow.id === state.selectedFlowId) || null;
+    }
+
+    function uniqueActiveNodes(flow) {
+      if (!flow) return new Set();
+      const ids = new Set();
+      flow.edges.forEach((edge) => {
+        ids.add(edge.from);
+        ids.add(edge.to);
+      });
+      flow.steps.forEach((step) => ids.add(step.node));
+      return ids;
+    }
+
+    function renderStaticShell() {
+      document.getElementById("title").textContent = data.title;
+      document.getElementById("description").textContent = data.description;
+      document.getElementById("jsonOutput").textContent = JSON.stringify(data, null, 2);
+
+      legend.innerHTML = data.lanes.map((lane) => (
+        `<span><i class="swatch" style="--color:${lane.color}"></i>${lane.label}</span>`
+      )).join("");
+
+      flowList.innerHTML = data.flows.map((flow) => (
+        `<button class="flow-button" type="button" data-flow-id="${flow.id}">
+          <span class="flow-name">${flow.name}</span>
+          <span class="flow-summary">${flow.summary}</span>
+        </button>`
+      )).join("");
+
+      flowList.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-flow-id]");
+        if (!button) return;
+        state.selectedFlowId = button.dataset.flowId;
+        render();
+      });
+
+      document.getElementById("clearButton").addEventListener("click", () => {
+        state.selectedFlowId = null;
+        render();
+      });
+
+      document.getElementById("jsonButton").addEventListener("click", () => {
+        const details = document.getElementById("jsonDetails");
+        details.open = true;
+        details.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+
+    function measureAndPosition() {
+      const rect = diagram.getBoundingClientRect();
+      const width = Math.max(rect.width, 1050);
+      const height = state.dimensions.height;
+      state.dimensions.width = width;
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+
+      const laneWidth = width / data.lanes.length;
+      const nodeWidth = 132;
+      const top = 72;
+      const gap = 73;
+
+      state.positions.clear();
+
+      data.lanes.forEach((lane, laneIndex) => {
+        const laneEl = document.createElement("div");
+        laneEl.className = "lane";
+        laneEl.style.left = `${laneIndex * laneWidth}px`;
+        laneEl.style.width = `${laneWidth}px`;
+        laneEl.innerHTML = `<div class="lane-label">${lane.label}</div>`;
+        diagram.appendChild(laneEl);
+
+        const components = data.components
+          .filter((component) => component.lane === lane.id)
+          .sort((a, b) => a.order - b.order);
+
+        components.forEach((component, index) => {
+          const x = laneIndex * laneWidth + Math.max(9, (laneWidth - nodeWidth) / 2);
+          const y = top + index * gap;
+          state.positions.set(component.id, { x, y, w: nodeWidth, h: 52 });
+        });
+      });
+    }
+
+    function renderNodes(activeNodes) {
+      data.components.forEach((component) => {
+        const pos = state.positions.get(component.id);
+        const node = document.createElement("article");
+        const isActive = activeNodes.has(component.id);
+        node.className = `node${isActive ? " active" : ""}${state.selectedFlowId && !isActive ? " dim" : ""}`;
+        node.id = `node-${component.id}`;
+        node.style.left = `${pos.x}px`;
+        node.style.top = `${pos.y}px`;
+        node.style.setProperty("--color", laneColor(component.lane));
+        node.title = component.role;
+        node.innerHTML = `
+          <div class="node-name">${component.name}</div>
+          <div class="node-detail">${component.detail}</div>
+        `;
+        diagram.appendChild(node);
+      });
+    }
+
+    // Compute how many edges share each source/target node so we can spread them.
+    function buildStaggerGroups(edges) {
+      const fromGroups = new Map();
+      const toGroups   = new Map();
+      edges.forEach((edge, idx) => {
+        if (!fromGroups.has(edge.from)) fromGroups.set(edge.from, []);
+        fromGroups.get(edge.from).push(idx);
+        if (!toGroups.has(edge.to)) toGroups.set(edge.to, []);
+        toGroups.get(edge.to).push(idx);
+      });
+      return { fromGroups, toGroups };
+    }
+
+    function staggerOffset(map, nodeId, edgeIdx, step) {
+      const group = map.get(nodeId) || [];
+      const pos   = group.indexOf(edgeIdx);
+      const count = group.length;
+      return count > 1 ? (pos - (count - 1) / 2) * step : 0;
+    }
+
+    function edgePath(from, to, srcOff, tgtOff) {
+      const a = state.positions.get(from);
+      const b = state.positions.get(to);
+      if (!a || !b) return "";
+
+      const startX = a.x + a.w;
+      const startY = a.y + 26 + srcOff;
+      const endX   = b.x;
+      const endY   = b.y + 26 + tgtOff;
+
+      const dx     = endX - startX;
+      const absDx  = Math.abs(dx);
+      const dy     = endY - startY;
+      const sameLane = absDx < 60;
+
+      if (sameLane) {
+        const offset = 32 + Math.abs(srcOff) * 0.6;
+        const midY   = (startY + endY) / 2;
+        if (dy > 0) {
+          return `M ${a.x + a.w / 2} ${a.y + 52} C ${a.x + a.w / 2 + offset} ${midY}, ${b.x + b.w / 2 - offset} ${midY}, ${b.x + b.w / 2} ${b.y}`;
+        }
+        return `M ${a.x + a.w / 2} ${a.y} C ${a.x + a.w / 2 + offset} ${midY}, ${b.x + b.w / 2 - offset} ${midY}, ${b.x + b.w / 2} ${b.y + 52}`;
+      }
+
+      // Cross-lane cubic bezier with controlled bend
+      const bend = Math.min(80, Math.max(40, absDx * 0.35));
+      if (dx >= 0) {
+        return `M ${startX} ${startY} C ${startX + bend} ${startY}, ${endX - bend} ${endY}, ${endX} ${endY}`;
+      }
+      return `M ${a.x} ${startY} C ${a.x - bend} ${startY}, ${b.x + b.w + bend} ${endY}, ${b.x + b.w} ${endY}`;
+    }
+
+    function edgeLabelPoint(from, to, srcOff, tgtOff) {
+      const a = state.positions.get(from);
+      const b = state.positions.get(to);
+      if (!a || !b) return { x: 0, y: 0 };
+      const dx       = Math.abs((a.x + a.w) - b.x);
+      const sameLane = dx < 60;
+      if (sameLane) {
+        return {
+          x: a.x + a.w / 2 + 38,
+          y: (a.y + b.y) / 2 + 26 + (srcOff + tgtOff) / 2
+        };
+      }
+      const startX  = a.x + a.w;
+      const endX    = b.x;
+      const reverse = endX < startX;
+      return {
+        x: reverse ? (a.x + b.x + b.w) / 2 : (startX + endX) / 2,
+        y: (a.y + 26 + srcOff + b.y + 26 + tgtOff) / 2
+      };
+    }
+
+    function renderEdges(flow) {
+      const allEdges    = data.flows.flatMap((item) => item.edges.map((edge) => ({ ...edge, flowId: item.id })));
+      const visibleEdges = flow ? flow.edges.map((edge) => ({ ...edge, flowId: flow.id })) : allEdges;
+
+      const { fromGroups, toGroups } = buildStaggerGroups(visibleEdges);
+      const STEP = 9; // px between parallel edges at the same node
+
+      const defs = `
+        <defs>
+          <marker id="arrow-dim" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M 0 0 L 8 4 L 0 8 z" fill="rgba(119,136,164,0.38)"></path>
+          </marker>
+          <marker id="arrow-active" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+            <path d="M 0 0 L 8 4 L 0 8 z" fill="#f1c232"></path>
+          </marker>
+        </defs>`;
+
+      svg.innerHTML = defs + visibleEdges.map((edge, index) => {
+        const srcOff = staggerOffset(fromGroups, edge.from, index, STEP);
+        const tgtOff = staggerOffset(toGroups,   edge.to,   index, STEP);
+        const path   = edgePath(edge.from, edge.to, srcOff, tgtOff);
+        const label  = edgeLabelPoint(edge.from, edge.to, srcOff, tgtOff);
+        const active = flow && edge.flowId === flow.id;
+        const cls    = `edge${active ? " active" : ""}${flow && !active ? " dim" : ""}`;
+        const marker = active ? "arrow-active" : "arrow-dim";
+        const text   = active
+          ? `<text class="edge-label" x="${label.x}" y="${label.y - 7}" text-anchor="middle">${edge.label}</text>`
+          : "";
+        return `<g class="${cls}"><path d="${path}" marker-end="url(#${marker})"></path>${text}</g>`;
+      }).join("");
+    }
+
+    function renderMarkers(flow) {
+      if (!flow) return;
+      flow.steps.forEach((step, index) => {
+        const pos = state.positions.get(step.node);
+        if (!pos) return;
+        const marker = document.createElement("div");
+        marker.className = "step-marker";
+        marker.style.left = `${pos.x - 8}px`;
+        marker.style.top = `${pos.y - 10}px`;
+        marker.textContent = index + 1;
+        diagram.appendChild(marker);
+      });
+    }
+
+    function renderSteps(flow) {
+      if (!flow) {
+        stepsContainer.innerHTML = `<div class="step-card"><div class="step-body">Select a flow to see package-to-package annotations.</div></div>`;
+        document.getElementById("nodeCount").textContent = data.components.length;
+        document.getElementById("stepCount").textContent = "0";
+        return;
+      }
+
+      stepsContainer.innerHTML = flow.steps.map((step, index) => `
+        <article class="step-card">
+          <div class="step-head">
+            <span class="step-num">${index + 1}</span>
+            <div class="step-title">${state.nodeMap.get(step.node)?.name || step.node} - ${step.title}</div>
+          </div>
+          <div class="step-body">${step.body}</div>
+          ${step.payload ? `<div class="step-payload">${step.payload}</div>` : ""}
+        </article>
+      `).join("");
+
+      document.getElementById("nodeCount").textContent = uniqueActiveNodes(flow).size;
+      document.getElementById("stepCount").textContent = flow.steps.length;
+    }
+
+    function renderFlowButtons() {
+      document.querySelectorAll("[data-flow-id]").forEach((button) => {
+        button.classList.toggle("selected", button.dataset.flowId === state.selectedFlowId);
+      });
+    }
+
+    function render() {
+      const flow = selectedFlow();
+      const activeNodes = uniqueActiveNodes(flow);
+      diagram.querySelectorAll(".lane, .node, .step-marker").forEach((el) => el.remove());
+      measureAndPosition();
+      renderEdges(flow);
+      renderNodes(activeNodes);
+      renderMarkers(flow);
+      renderSteps(flow);
+      renderFlowButtons();
+    }
+
+    renderStaticShell();
+    render();
+    window.addEventListener("resize", () => render());
+  </script>
+</body>
+</html>

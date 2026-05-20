@@ -5,6 +5,7 @@ description = "Extract, index, and retrieve code patterns from any repo"
 requires-python = ">=3.10"
 dependencies = [
     "anthropic>=0.40.0",
+    "openai>=1.0.0",
     "mcp[cli]>=1.27.0",
     "tree-sitter>=0.24.0",
     "tree-sitter-python>=0.23.0",
@@ -18,11 +19,16 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pytest>=8.0.0",
     "pre-commit>=3.7.0",
     "bandit>=1.8.0",
     "detect-secrets>=1.5.0",
     "pip-audit>=2.7.0",
     "ruff>=0.4.0",
+]
+web = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [project.scripts]
@@ -31,3 +37,6 @@ pv = "src.cli:main"
 [tool.bandit]
 exclude_dirs = ["venv", ".venv", "tests"]
 skips = []           # add "B101" here to skip assert warnings if needed
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

@@ -8,8 +8,8 @@ A personal code pattern knowledge base. Point it at any repo, it extracts reusab
 ┌─────────────────────────────────────────────────────────────────────┐
 │  ACCESS LAYER                                                       │
 │  ┌──────────────┐  ┌──────────────────┐  ┌───────────────────────┐  │
-│  │ MCP Server   │  │ Chainlit Chat UI │  │ CLI                   │  │
-│  │ (FastMCP)    │  │ (browser-based)  │  │ index/search/chat/    │  │
+│  │ MCP Server   │  │ React UI + BFF   │  │ CLI                   │  │
+│  │ (FastMCP)    │  │ (Vite + FastAPI) │  │ index/search/chat/    │  │
 │  │ 8 tools      │  │ agentic loop     │  │ stats/serve           │  │
 │  └──────┬───────┘  └────────┬─────────┘  └──────────┬────────────┘  │
 │         │                   │                       │               │
@@ -45,8 +45,8 @@ A personal code pattern knowledge base. Point it at any repo, it extracts reusab
 ├─────────────────────────────────────────────────────────────────────┤
 │  CLIENT LAYER                                                       │
 │  ┌────────────────────────────────────────────────────────────────┐ │
-│  │ src/client.py — factory for sync/async Anthropic clients       │ │
-│  │ Backends: anthropic (direct), bedrock (AWS), bifrost (proxy)   │ │
+│  │ src/client.py — factory for sync/async model clients           │ │
+│  │ Backends: anthropic (direct), bedrock (AWS), bifrost, ollama   │ │
 │  │ Selected by PATTERN_VAULT_BACKEND env var                      │ │
 │  └────────────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
@@ -59,32 +59,63 @@ pattern-vault/
 ├── pyproject.toml              # project metadata + dependencies
 ├── CLAUDE.md                   # ← you are here
 ├── README.md                   # user-facing docs
+├── DESIGN.md                   # UI design tokens (colors, typography, spacing, components)
+├── HANDOFF.md                  # Agent handoff document for UI redesign progress
 ├── .mcp.json                   # MCP config for Claude Code
 ├── .gitignore
 ├── .chainlit/
 │   └── config.toml             # Chainlit UI settings
-└── src/
-    ├── __init__.py
-    ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost)
-    ├── cli.py                  # CLI entry point: index, search, stats, chat, serve
-    ├── store/
-    │   ├── __init__.py
-    │   └── db.py               # ★ SQLite schema, CRUD, FTS5 search, dedup, stats
-    ├── indexer/
-    │   ├── __init__.py
-    │   ├── chunker.py          # ★ Tree-sitter AST parsing, file scanning, LANG_MAP
-    │   ├── extractor.py        # ★ Claude extraction prompt + sync/async API calls
-    │   └── batch.py            # Batch pipeline: scan → chunk → extract → store
-    ├── agent/
-    │   ├── __init__.py
-    │   ├── tools.py            # ★ 7 tool definitions + implementations for agentic loop
-    │   └── orchestrator.py     # ★ Claude tool-use loop (sync + async generators)
-    ├── server/
-    │   ├── __init__.py
-    │   └── mcp_server.py       # FastMCP server — 8 tools exposed to Claude Code
-    └── ui/
-        ├── __init__.py
-        └── app.py              # Chainlit chat UI — wires orchestrator to browser
+├── src/
+│   ├── __init__.py
+│   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost/ollama)
+│   ├── cli.py                  # CLI entry point: index, search, stats, chat, serve
+│   ├── store/
+│   │   ├── __init__.py
+│   │   └── db.py               # ★ SQLite schema, CRUD, FTS5 search, dedup, stats
+│   ├── indexer/
+│   │   ├── __init__.py
+│   │   ├── chunker.py          # ★ Tree-sitter AST parsing, file scanning, LANG_MAP
+│   │   ├── extractor.py        # ★ Claude extraction prompt + sync/async API calls
+│   │   └── batch.py            # Batch pipeline: scan → chunk → extract → store
+│   ├── agent/
+│   │   ├── __init__.py
+│   │   ├── tools.py            # ★ 7 tool definitions + implementations for agentic loop
+│   │   └── orchestrator.py     # ★ Claude tool-use loop (sync + async generators)
+│   ├── server/
+│   │   ├── __init__.py
+│   │   └── mcp_server.py       # FastMCP server — 8 tools exposed to Claude Code
+│   ├── api/                    # ★ FastAPI BFF for the React frontend
+│   │   ├── __init__.py
+│   │   ├── main.py             # App, CORS, lifespan, router mounts
+│   │   ├── deps.py             # DB connection dependency injection
+│   │   └── routes/
+│   │       ├── patterns.py     # CRUD + FTS search for patterns
+│   │       ├── stats.py        # Health check, vault stats, categories, tags
+│   │       └── chat.py         # ★ POST /api/chat → SSE stream from orchestrator
+│   └── ui/
+│       ├── __init__.py
+│       └── app.py              # Chainlit chat UI (legacy, still works)
+└── web/                        # ★ React frontend (Vite + React 19 + TypeScript)
+    ├── package.json
+    ├── vite.config.ts          # Proxies /api to :8001, @/ path alias
+    ├── tailwind.config.ts      # DESIGN.md tokens mapped to Tailwind
+    ├── tsconfig.json
+    ├── index.html
+    └── src/
+        ├── main.tsx            # Entry: QueryClient, font imports
+        ├── App.tsx             # Root layout: Header + SideNav + PanelGrid
+        ├── design-tokens.css   # Tailwind directives + glass utilities
+        ├── api/
+        │   ├── client.ts       # Typed fetch wrapper + API interface
+        │   └── hooks/
+        │       ├── usePatterns.ts  # TanStack Query hooks
+        │       └── useChat.ts     # ★ SSE consumption hook for chat
+        ├── stores/
+        │   ├── uiStore.ts      # Zustand: active view, sidebar, selection
+        │   └── chatStore.ts    # ★ Zustand: messages, streaming, tool calls
+        ├── components/         # GlassPanel, SideNav, SearchBar, CodeBlock, Chip, ToolStep
+        ├── panels/             # PatternBrowser, PatternInspector, ChatPanel
+        └── layouts/PanelGrid.tsx  # CSS Grid multi-pane layout
 ```
 
 Files marked ★ are the core files you'll modify most.
@@ -123,6 +154,7 @@ Max rounds: 15 (safety limit in `MAX_TOOL_ROUNDS`).
 PATTERN_VAULT_BACKEND=anthropic  → anthropic.Anthropic / AsyncAnthropic
 PATTERN_VAULT_BACKEND=bedrock    → anthropic.AnthropicBedrock / AsyncAnthropicBedrock
 PATTERN_VAULT_BACKEND=bifrost    → anthropic.Anthropic with custom base_url
+PATTERN_VAULT_BACKEND=ollama     → OpenAI / AsyncOpenAI wrapped in Anthropic-compatible adapter
 ```
 
 Functions: `make_client()`, `make_async_client()`, `get_model()`, `describe_backend()`
@@ -145,6 +177,10 @@ chunks (id, pattern_id FK, code_text, chunk_type, embedding BLOB)
 
 repo_insights (id, repo_path, insight_text, tags JSON, created_at)
 
+token_usage_events (id, provider, model, flow, operation, input_tokens,
+                    output_tokens, total_tokens, estimated, usage_json,
+                    session_id, job_id, created_at)
+
 patterns_fts — FTS5 virtual table over (name, summary, tags, category, language)
                with porter+unicode61 tokenizer, BM25 ranking
                kept in sync via INSERT/DELETE/UPDATE triggers
@@ -162,8 +198,9 @@ The extraction prompt in `src/indexer/extractor.py` classifies patterns into:
 
 | Variable | Required | Default | Purpose |
 |----------|----------|---------|---------|
-| `PATTERN_VAULT_BACKEND` | No | `anthropic` | Backend: `anthropic`, `bedrock`, or `bifrost` |
+| `PATTERN_VAULT_BACKEND` | No | `anthropic` | Backend: `anthropic`, `bedrock`, `bifrost`, or `ollama` |
 | `PATTERN_VAULT_DB` | No | `~/.pattern-vault/patterns.db` | SQLite database path |
+| `PATTERN_VAULT_WORKSPACE_ROOTS` | No | current working directory | `os.pathsep`-separated roots that agent file tools may scan/read |
 | `PATTERN_VAULT_MODEL` | No | auto per backend | Override model ID |
 | `ANTHROPIC_API_KEY` | If backend=anthropic | — | Anthropic API key |
 | `AWS_ACCESS_KEY_ID` | If backend=bedrock | — | AWS credentials |
@@ -172,6 +209,8 @@ The extraction prompt in `src/indexer/extractor.py` classifies patterns into:
 | `AWS_SESSION_TOKEN` | No | — | For temporary AWS credentials |
 | `BIFROST_URL` | If backend=bifrost | — | e.g. `http://localhost:8080/anthropic` |
 | `BIFROST_API_KEY` | No | `dummy` | Bifrost virtual key |
+| `OLLAMA_BASE_URL` | No | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
+| `OLLAMA_API_KEY` | No | `ollama` | Optional dummy key for OpenAI-compatible clients |
 
 ## Running
 
@@ -184,12 +223,18 @@ export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1
 
 # Bifrost (proxy to any provider):
 export PATTERN_VAULT_BACKEND=bifrost
+export PATTERN_VAULT_MODEL="bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 export BIFROST_URL=http://localhost:8080/anthropic
+
+# Ollama (local models such as qwen):
+export PATTERN_VAULT_BACKEND=ollama
+export OLLAMA_BASE_URL=http://localhost:11434/v1
+export PATTERN_VAULT_MODEL=qwen2.5-coder:7b
 
 # Direct Anthropic:
 export ANTHROPIC_API_KEY=sk-ant-...
 
-# ── Commands ──
+# ── CLI commands ──
 python -m src.cli index /path/to/repo --dry-run    # scan+chunk only, no API
 python -m src.cli index /path/to/repo               # full index
 python -m src.cli search "retry backoff"             # search patterns
@@ -197,8 +242,14 @@ python -m src.cli search "auth" --category api_pattern --language python
 python -m src.cli stats                              # vault statistics
 python -m src.cli chat                               # terminal agentic chat
 
+# ── Custom React UI (primary) ──
+uvicorn src.api.main:app --port 8001 --reload       # backend API
+cd web && npm run dev                                # frontend at :5173 (proxies /api to :8001)
+
+# ── Legacy Chainlit UI (still works) ──
 chainlit run src/ui/app.py                           # browser chat at :8000
 
+# ── MCP server ──
 python src/server/mcp_server.py                      # MCP server (stdio)
 python -m src.cli serve --transport http --port 8000  # MCP server (HTTP)
 ```
@@ -267,14 +318,12 @@ Add a new branch in `src/client.py` in both `make_client()` and `make_async_clie
 
 ## Testing
 
-No test framework — tests run inline against temp databases.
+Pytest covers the current Stage 1 regression surface around database path resolution, insert/search, chunking, dry-run indexing, and agent file-tool safety.
 
 ```bash
-# Full smoke test (no API key needed)
-python3 -m src.cli stats
-python3 -m src.cli index /some/repo --dry-run
-python3 -c "from src.server.mcp_server import mcp; print(list(mcp._tool_manager._tools.keys()))"
-python3 -c "from src.client import describe_backend; print(describe_backend())"
+uv run --extra dev pytest
+uv run --extra dev ruff check src tests
+python -m compileall src tests
 ```
 
 ## Known limitations and pending work
@@ -288,7 +337,7 @@ python3 -c "from src.client import describe_backend; print(describe_backend())"
 3. **Streaming responses**: Orchestrator waits for full Claude responses. Streaming would improve Chainlit UI latency.
 4. **Parallel chunk extraction**: Batch indexer processes API calls sequentially. Use `asyncio.gather` for parallel extraction within rate limits.
 5. **Conversation summarisation**: Inject mid-conversation summary for long sessions to stay within context limits.
-6. **Proper pytest suite**: Migrate inline tests to pytest with fixtures.
+6. **Broader pytest coverage**: Extend tests beyond the Stage 1 baseline to extractor parsing, MCP tools, UI helpers, schema migrations, and error paths.
 7. **Export/import**: JSON export of vault for sharing across machines.
 8. **Pattern quality scoring**: Replace text `quality_signal` with numeric score for ranking.
 9. **UI browse mode**: Chainlit browse panel by category/tag with syntax-highlighted code.
@@ -297,9 +346,73 @@ python3 -c "from src.client import describe_backend; print(describe_backend())"
 ## Dependencies
 
 ```
-Core:           anthropic, mcp[cli], tree-sitter, tree-sitter-python, pydantic
+Core:           anthropic, openai, mcp[cli], tree-sitter, tree-sitter-python, pydantic
 UI:             chainlit (Python ≤3.13 only)
 Bedrock:        pip install "anthropic[bedrock]"
 More languages: tree-sitter-javascript, tree-sitter-typescript, etc.
 Planned:        sqlite-vec, sentence-transformers
 ```
+
+## 12-rule template for agents to follow
+
+These rules apply to every task in this project unless explicitly overridden.
+Bias: caution over speed on non-trivial work. Use judgment on trivial tasks.
+
+### Rule 1 — Think Before Coding
+State assumptions explicitly. If uncertain, ask rather than guess.
+Present multiple interpretations when ambiguity exists.
+Push back when a simpler approach exists.
+Stop when confused. Name what's unclear.
+
+### Rule 2 — Simplicity First
+Minimum code that solves the problem. Nothing speculative.
+No features beyond what was asked. No abstractions for single-use code.
+Test: would a senior engineer say this is overcomplicated? If yes, simplify.
+
+### Rule 3 — Surgical Changes
+Touch only what you must. Clean up only your own mess.
+Don't "improve" adjacent code, comments, or formatting.
+Don't refactor what isn't broken. Match existing style.
+
+### Rule 4 — Goal-Driven Execution
+Define success criteria. Loop until verified.
+Don't follow steps. Define success and iterate.
+Strong success criteria let you loop independently.
+
+## Rule 5 — Use the model only for judgment calls
+Use me for: classification, drafting, summarization, extraction.
+Do NOT use me for: routing, retries, deterministic transforms.
+If code can answer, code answers.
+
+### Rule 6 — Token budgets are not advisory
+Per-task: 10,000 tokens. Per-session: 90,000 tokens.
+If approaching budget, summarize and start fresh.
+Surface the breach. Do not silently overrun.
+
+### Rule 7 — Surface conflicts, don't average them
+If two patterns contradict, pick one (more recent / more tested).
+Explain why. Flag the other for cleanup.
+Don't blend conflicting patterns.
+
+### Rule 8 — Read before you write
+Before adding code, read exports, immediate callers, shared utilities.
+"Looks orthogonal" is dangerous. If unsure why code is structured a way, ask.
+
+### Rule 9 — Tests verify intent, not just behavior
+Tests must encode WHY behavior matters, not just WHAT it does.
+A test that can't fail when business logic changes is wrong.
+
+### Rule 10 — Checkpoint after every significant step
+Summarize what was done, what's verified, what's left.
+Don't continue from a state you can't describe back.
+If you lose track, stop and restate.
+
+### Rule 11 — Match the codebase's conventions, even if you disagree
+Conformance > taste inside the codebase.
+If you genuinely think a convention is harmful, surface it. Don't fork silently.
+
+### Rule 12 — Fail loud and document update
+"Completed" is wrong if anything was skipped silently.
+"Tests pass" is wrong if any were skipped.
+Default to surfacing uncertainty, not hiding it.
+After every change or decision update relevant document

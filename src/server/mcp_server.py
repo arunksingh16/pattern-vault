@@ -7,7 +7,6 @@ Tools: search_patterns, get_pattern, add_pattern, save_insight,
 """
 
 import json
-import os
 import sys
 from pathlib import Path
 from typing import Optional
@@ -29,11 +28,12 @@ from src.store.db import (  # noqa: E402
     list_tags as db_list_tags,
     list_categories as db_list_categories,
     get_stats as db_get_stats,
+    resolve_db_path,
 )
 
 # ── Server setup ─────────────────────────────────────────────
 
-DB_PATH = Path(os.environ.get("PATTERN_VAULT_DB", str(Path.home() / ".pattern-vault" / "patterns.db")))
+DB_PATH = resolve_db_path()
 
 mcp = FastMCP("pattern_vault_mcp")
 
@@ -326,6 +326,7 @@ async def reindex(
     path: str,
     repo_name: Optional[str] = None,
     dry_run: bool = False,
+    profile: str = "curated",
 ) -> str:
     """Scan a directory, extract code patterns using Claude, and store them.
 
@@ -336,6 +337,7 @@ async def reindex(
         path: Absolute path to the directory to index
         repo_name: Optional name for the source repo (defaults to directory name)
         dry_run: If true, scan and chunk but don't call Claude API or store
+        profile: Indexing volume profile: curated, balanced, or comprehensive
 
     Returns:
         Indexing statistics: files scanned, chunks extracted, patterns found/stored
@@ -348,6 +350,7 @@ async def reindex(
         db_path=DB_PATH,
         repo_name=repo_name,
         dry_run=dry_run,
+        profile=profile,
         on_progress=lambda msg: logs.append(msg),
     )
 
@@ -357,6 +360,7 @@ async def reindex(
         "chunks_extracted": stats.chunks_extracted,
         "patterns_found": stats.patterns_found,
         "patterns_stored": stats.patterns_stored,
+        "patterns_rejected": stats.patterns_rejected,
         "errors": stats.errors,
         "log": logs,
     }, indent=2)
