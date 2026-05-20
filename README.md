@@ -76,8 +76,8 @@ python -m src.cli search "retry with backoff"
 python -m src.cli chat
 
 # Interactive analysis (browser) — NEW custom UI
+./backend.sh start                         # backend API lifecycle helper
 cd web && npm run dev                    # frontend at :5173
-uvicorn src.api.main:app --port 8001     # backend API
 
 # Legacy Chainlit UI (still works)
 chainlit run src/ui/app.py
@@ -123,6 +123,10 @@ Then say things like:
 - "Save this function as a pattern in the vault"
 - "Index /path/to/repo for reusable patterns"
 
+e.g.
+
+![alt text](./assets/mcp.png)
+
 ## Interactive analysis
 
 The `chat` command (terminal) and Chainlit UI (browser) run a full agentic loop. Claude has tools to scan directories, read files, parse ASTs, and save patterns. You have a conversation:
@@ -159,6 +163,28 @@ HTTP serving uses FastMCP's streamable HTTP transport:
 ```bash
 python -m src.cli serve --transport http --host 127.0.0.1 --port 8000
 ```
+
+Backend lifecycle helper:
+
+```bash
+./backend.sh start
+./backend.sh status
+./backend.sh restart
+./backend.sh stop
+```
+
+The script manages the FastAPI backend for `src.api.main:app`, writes logs under `.temp/backend/`, and refuses to kill unrelated processes if port `8001` is already owned by something else.
+
+Full dev stack helper:
+
+```bash
+./dev.sh start
+./dev.sh status
+./dev.sh restart
+./dev.sh stop
+```
+
+The supervisor starts the backend and the Vite frontend together, writes frontend logs under `.temp/dev/`, and keeps the same safe process checks before restarting either service.
 
 ## MCP tools
 
