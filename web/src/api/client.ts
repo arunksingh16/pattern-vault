@@ -105,17 +105,30 @@ export interface WorkspaceIndexStats {
   chunks_extracted: number
   patterns_found: number
   patterns_stored: number
+  patterns_rejected: number
   current_stage: string
+}
+
+export type IndexingProfile = 'curated' | 'balanced' | 'comprehensive'
+
+export interface WorkspaceIndexFilters {
+  include_languages?: string[]
+  include_paths?: string[]
+  exclude_paths?: string[]
 }
 
 export interface WorkspaceIndexJob {
   job_id: string
   title: string
   source_kind: 'repo' | 'path'
-  status: 'queued' | 'running' | 'completed' | 'failed'
+  status: 'queued' | 'running' | 'completed' | 'completed_with_errors' | 'failed'
   path: string
   repo_name: string | null
   dry_run: boolean
+  profile: IndexingProfile
+  include_languages: string[]
+  include_paths: string[]
+  exclude_paths: string[]
   created_at: number
   started_at: number | null
   finished_at: number | null
@@ -125,8 +138,11 @@ export interface WorkspaceIndexJob {
 }
 
 export interface WorkspaceIndexEvent {
-  type: 'status' | 'log' | 'batch' | 'pattern_found' | 'done' | 'error'
+  type: 'job_summary' | 'status' | 'log' | 'batch' | 'pattern_found' | 'done' | 'error'
+  job?: WorkspaceIndexJob
   message?: string
+  status?: WorkspaceIndexJob['status']
+  recoverable?: boolean
   stage?: string
   range_start?: number
   range_end?: number
@@ -155,7 +171,11 @@ export const api = {
     request<string[]>(category ? `/tags?category=${encodeURIComponent(category)}` : '/tags'),
 
   patterns: {
-    list: (limit = 25) => request<Pattern[]>(`/patterns?limit=${limit}`),
+    list: (limit = 25, source_repo?: string) => {
+      const params = new URLSearchParams({ limit: String(limit) })
+      if (source_repo) params.set('source_repo', source_repo)
+      return request<Pattern[]>(`/patterns?${params}`)
+    },
     get: (id: number) => request<Pattern>(`/patterns/${id}`),
     search: (q: string, opts?: { category?: string; language?: string; limit?: number }) => {
       const params = new URLSearchParams({ q })
@@ -202,15 +222,31 @@ export const api = {
         { method: 'POST', body: JSON.stringify({ url }) }
       ),
     cloned: () => request<ClonedRepo[]>('/workspace/cloned'),
-    startIndexForPath: (path: string, dryRun = false) =>
+    deleteRepo: (owner: string, repo: string) =>
+      request<{ patterns_deleted: number; repo_deleted: boolean }>(
+        `/workspace/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
+        { method: 'DELETE' }
+      ),
+    startIndexForPath: (
+      path: string,
+      dryRun = false,
+      profile: IndexingProfile = 'curated',
+      filters: WorkspaceIndexFilters = {}
+    ) =>
       request<WorkspaceIndexJob>('/workspace/index', {
         method: 'POST',
-        body: JSON.stringify({ path, dry_run: dryRun }),
+        body: JSON.stringify({ path, dry_run: dryRun, profile, ...filters }),
       }),
-    startIndexForRepo: (owner: string, repo: string, dryRun = false) =>
+    startIndexForRepo: (
+      owner: string,
+      repo: string,
+      dryRun = false,
+      profile: IndexingProfile = 'curated',
+      filters: WorkspaceIndexFilters = {}
+    ) =>
       request<WorkspaceIndexJob>('/workspace/index', {
         method: 'POST',
-        body: JSON.stringify({ repo: { owner, repo }, dry_run: dryRun }),
+        body: JSON.stringify({ repo: { owner, repo }, dry_run: dryRun, profile, ...filters }),
       }),
     indexStatus: (jobId: string) => request<WorkspaceIndexJob>(`/workspace/index/${encodeURIComponent(jobId)}`),
     indexJobs: (limit = 20) => request<WorkspaceIndexJob[]>(`/workspace/index-jobs?limit=${limit}`),
