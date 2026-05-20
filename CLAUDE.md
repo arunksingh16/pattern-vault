@@ -223,6 +223,7 @@ export AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_REGION=us-east-1
 
 # Bifrost (proxy to any provider):
 export PATTERN_VAULT_BACKEND=bifrost
+export PATTERN_VAULT_MODEL="bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 export BIFROST_URL=http://localhost:8080/anthropic
 
 # Ollama (local models such as qwen):
