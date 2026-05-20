@@ -267,3 +267,5 @@ __marimo__/
 
 # Cloned repos (temporary clone workspace)
 .temp/
+.claude
+.codex
