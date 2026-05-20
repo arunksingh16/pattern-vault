@@ -3,7 +3,10 @@ run.sh
 .env
 *.env.*
 !*.env.example
-
+.temp
+.playwright/
+.playwright-mcp/
+web/.chainlit
 # --- Python ---
 __pycache__/
 *.pyc
@@ -38,6 +41,10 @@ htmlcov/
 
 # --- Chainlit ---
 .chainlit/translations/
+
+# --- Web frontend ---
+web/node_modules/
+web/dist/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -257,4 +264,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-.codex/
+
+# Cloned repos (temporary clone workspace)
+.temp/
+.claude
+.codex
