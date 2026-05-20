@@ -1,12 +1,24 @@
 import { create } from 'zustand'
+import type { ChatSession } from '@/api/client'
 
-type View = 'explorer' | 'patterns' | 'copilot' | 'insights' | 'history' | 'usage' | 'vault' | 'mcp' | 'ingestion'
+export type View = 'explorer' | 'patterns' | 'copilot' | 'insights' | 'history' | 'usage' | 'vault' | 'mcp' | 'ingestion' | 'settings'
 
-export interface PendingAnalyseData {
-  message: string
-  repoOwner: string
-  repoName: string
-}
+export type CopilotHandoff =
+  | {
+      kind: 'repo'
+      sourceView: View
+      repoOwner: string
+      repoName: string
+      branch: string
+      localPath: string
+      analyseMessage: string
+      existingSession: ChatSession | null
+    }
+  | {
+      kind: 'pattern'
+      sourceView: View
+      patternId: number
+    }
 
 export interface ActiveIndexJob {
   jobId: string
@@ -15,40 +27,40 @@ export interface ActiveIndexJob {
   repoName?: string | null
   sourceKind?: 'repo' | 'path'
   dryRun: boolean
+  profile?: 'curated' | 'balanced' | 'comprehensive'
+  includeLanguages?: string[]
+  includePaths?: string[]
+  excludePaths?: string[]
 }
 
 interface UIState {
   activeView: View
   sidebarExpanded: boolean
   selectedPatternId: number | null
-  discussPatternId: number | null
-  pendingAnalyseData: PendingAnalyseData | null
+  copilotHandoff: CopilotHandoff | null
   activeIndexJob: ActiveIndexJob | null
   setActiveView: (view: View) => void
   toggleSidebar: () => void
   selectPattern: (id: number | null) => void
-  setDiscussPattern: (id: number) => void
-  clearDiscussPattern: () => void
-  setPendingAnalyse: (data: PendingAnalyseData) => void
-  clearPendingAnalyse: () => void
+  setCopilotHandoff: (data: CopilotHandoff) => void
+  clearCopilotHandoff: () => void
   setActiveIndexJob: (job: ActiveIndexJob) => void
+  openIndexJob: (job: ActiveIndexJob) => void
   clearActiveIndexJob: () => void
 }
 
 export const useUIStore = create<UIState>((set) => ({
-  activeView: 'patterns',
+  activeView: 'explorer',
   sidebarExpanded: false,
   selectedPatternId: null,
-  discussPatternId: null,
-  pendingAnalyseData: null,
+  copilotHandoff: null,
   activeIndexJob: null,
   setActiveView: (view) => set({ activeView: view }),
   toggleSidebar: () => set((s) => ({ sidebarExpanded: !s.sidebarExpanded })),
   selectPattern: (id) => set({ selectedPatternId: id }),
-  setDiscussPattern: (id) => set({ discussPatternId: id }),
-  clearDiscussPattern: () => set({ discussPatternId: null }),
-  setPendingAnalyse: (data) => set({ pendingAnalyseData: data }),
-  clearPendingAnalyse: () => set({ pendingAnalyseData: null }),
+  setCopilotHandoff: (data) => set({ copilotHandoff: data }),
+  clearCopilotHandoff: () => set({ copilotHandoff: null }),
   setActiveIndexJob: (job) => set({ activeIndexJob: job }),
+  openIndexJob: (job) => set({ activeIndexJob: job, activeView: 'ingestion' }),
   clearActiveIndexJob: () => set({ activeIndexJob: null }),
 }))

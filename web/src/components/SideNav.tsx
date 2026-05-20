@@ -50,7 +50,14 @@ export function SideNav() {
       </div>
 
       <div className="flex flex-col gap-1 pb-6">
-        <button className="flex items-center gap-4 px-4 py-3 text-on-surface-variant hover:text-on-surface w-full">
+        <button
+          onClick={() => setActiveView('settings')}
+          className={`flex items-center gap-4 px-4 py-3 w-full transition-all
+            ${activeView === 'settings'
+              ? 'bg-primary-container/20 text-primary border-r-2 border-secondary'
+              : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-bright/50'
+            }`}
+        >
           <span className="material-symbols-outlined text-[20px]">settings</span>
           <span className="font-mono text-label-caps opacity-0 group-hover:opacity-100 transition-opacity uppercase">
             Settings

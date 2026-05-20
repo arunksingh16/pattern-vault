@@ -5,8 +5,6 @@ export function useChat() {
     messages,
     isStreaming,
     error,
-    currentSessionId,
-    repoContext,
     addUserMessage,
     startAssistantMessage,
     appendText,
@@ -25,6 +23,12 @@ export function useChat() {
   ) {
     if (isStreaming || !content.trim()) return
 
+    const {
+      messages: currentMessages,
+      currentSessionId,
+      repoContext,
+    } = useChatStore.getState()
+
     const activeRepoContext = explicitRepoContext ?? repoContext
     if (explicitRepoContext) {
       setRepoContext(explicitRepoContext)
@@ -33,7 +37,7 @@ export function useChat() {
     addUserMessage(content)
 
     const apiMessages = [
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
+      ...currentMessages.map((m) => ({ role: m.role, content: m.content })),
       { role: 'user' as const, content },
     ]
 

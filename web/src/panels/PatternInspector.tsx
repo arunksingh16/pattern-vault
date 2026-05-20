@@ -8,7 +8,7 @@ import { useUIStore } from '@/stores/uiStore'
 export function PatternInspector() {
   const selectedId = useUIStore((s) => s.selectedPatternId)
   const selectPattern = useUIStore((s) => s.selectPattern)
-  const setDiscussPattern = useUIStore((s) => s.setDiscussPattern)
+  const setCopilotHandoff = useUIStore((s) => s.setCopilotHandoff)
   const setActiveView = useUIStore((s) => s.setActiveView)
   const { data: pattern, isLoading } = usePattern(selectedId)
   const deleteMutation = useDeletePattern()
@@ -95,7 +95,10 @@ export function PatternInspector() {
         </span>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => { setDiscussPattern(pattern.id); setActiveView('copilot') }}
+            onClick={() => {
+              setCopilotHandoff({ kind: 'pattern', sourceView: 'patterns', patternId: pattern.id })
+              setActiveView('copilot')
+            }}
             className="flex items-center gap-1 px-2 py-1 text-primary hover:bg-primary/10 rounded transition-colors font-mono text-[10px] uppercase"
             title="Discuss this pattern with Copilot"
           >

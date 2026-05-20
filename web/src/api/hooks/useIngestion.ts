@@ -59,12 +59,23 @@ export function useIngestion(jobId: string | null): UseIngestionResult {
         }
 
         setJob((current) => {
+          if (event.type === 'job_summary' && event.job) {
+            return current ? { ...current, ...event.job } : event.job
+          }
+
           if (!current) {
             return current
           }
+          const nextStatus =
+            event.type === 'done'
+              ? event.status ?? (event.errors && event.errors.length > 0 ? 'completed_with_errors' : 'completed')
+              : event.type === 'error' && event.recoverable !== true
+                ? event.status ?? 'failed'
+                : current.status
+
           return {
             ...current,
-            status: event.type === 'done' ? 'completed' : event.type === 'error' ? 'failed' : current.status,
+            status: nextStatus,
             stats: event.stats ?? current.stats,
             error: event.type === 'error' ? event.message ?? current.error : current.error,
           }

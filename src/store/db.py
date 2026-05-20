@@ -532,6 +532,29 @@ def get_cloned_repo(conn: sqlite3.Connection, owner: str, repo: str) -> Optional
     return dict(row) if row else None
 
 
+def delete_repo_and_patterns(
+    conn: sqlite3.Connection, owner: str, repo: str
+) -> dict:
+    """Delete a cloned repo registry entry and all patterns sourced from it.
+
+    Returns counts of deleted rows for patterns and the repo record itself.
+    Chunks are removed automatically via the ON DELETE CASCADE on chunks.pattern_id.
+    """
+    source_repo = f"{owner}/{repo}"
+    pattern_cursor = conn.execute(
+        "DELETE FROM patterns WHERE source_repo = ?", (source_repo,)
+    )
+    patterns_deleted = pattern_cursor.rowcount
+
+    repo_cursor = conn.execute(
+        "DELETE FROM cloned_repos WHERE owner = ? AND repo = ?", (owner, repo)
+    )
+    repo_deleted = repo_cursor.rowcount
+
+    conn.commit()
+    return {"patterns_deleted": patterns_deleted, "repo_deleted": repo_deleted > 0}
+
+
 def get_pattern(conn: sqlite3.Connection, pattern_id: int) -> Optional[dict]:
     """Get a single pattern with its code chunks."""
     row = conn.execute(

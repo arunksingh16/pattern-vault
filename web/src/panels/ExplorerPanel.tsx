@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, ApiError, type ClonedRepo, type ChatSession, type WorkspaceIndexJob } from '@/api/client'
+import { api, ApiError, type ClonedRepo, type IndexingProfile, type WorkspaceIndexFilters, type WorkspaceIndexJob } from '@/api/client'
 import { useUIStore } from '@/stores/uiStore'
-import { useChatStore } from '@/stores/chatStore'
 
 interface TreeEntry {
   name: string
@@ -68,17 +67,18 @@ function formatSize(bytes: number): string {
 export function ExplorerPanel() {
   const qc = useQueryClient()
   const setActiveView = useUIStore((s) => s.setActiveView)
-  const setPendingAnalyse = useUIStore((s) => s.setPendingAnalyse)
-  const setActiveIndexJob = useUIStore((s) => s.setActiveIndexJob)
-  const loadSession = useChatStore((s) => s.loadSession)
-  const setRepoContext = useChatStore((s) => s.setRepoContext)
-  const clearChat = useChatStore((s) => s.clearChat)
+  const setCopilotHandoff = useUIStore((s) => s.setCopilotHandoff)
+  const openIndexJob = useUIStore((s) => s.openIndexJob)
 
-  // Per-repo state: spinner and continue/fresh prompt
+  // Per-repo state: spinner for handoff preparation
   const [analysingRepoId, setAnalysingRepoId] = useState<number | null>(null)
   const [indexingRepoId, setIndexingRepoId] = useState<number | null>(null)
-  const [promptState, setPromptState] = useState<{ repo: ClonedRepo; session: ChatSession } | null>(null)
+  const [confirmDeleteRepoId, setConfirmDeleteRepoId] = useState<number | null>(null)
   const [dryRunIndexing, setDryRunIndexing] = useState(false)
+  const [indexProfile, setIndexProfile] = useState<IndexingProfile>('curated')
+  const [indexLanguagesInput, setIndexLanguagesInput] = useState('')
+  const [includePathsInput, setIncludePathsInput] = useState('')
+  const [excludePathsInput, setExcludePathsInput] = useState('')
   const [indexError, setIndexError] = useState<string | null>(null)
 
   // Local workspace tree state
@@ -125,6 +125,17 @@ export function ExplorerPanel() {
     },
   })
 
+  const deleteRepoMutation = useMutation({
+    mutationFn: ({ owner, repo }: { owner: string; repo: string }) =>
+      api.workspace.deleteRepo(owner, repo),
+    onSuccess: () => {
+      setConfirmDeleteRepoId(null)
+      void qc.invalidateQueries({ queryKey: ['cloned-repos'] })
+      void qc.invalidateQueries({ queryKey: ['patterns'] })
+      void qc.invalidateQueries({ queryKey: ['vault-stats'] })
+    },
+  })
+
   function handleClone(e: React.FormEvent) {
     e.preventDefault()
     if (!cloneUrl.trim() || cloneMutation.isPending) return
@@ -137,39 +148,22 @@ export function ExplorerPanel() {
 
   async function handleAnalyse(repo: ClonedRepo) {
     setAnalysingRepoId(repo.id)
-    setPromptState(null)
     try {
       const existingSession = await api.history.forRepo(repo.owner, repo.repo)
-      if (existingSession) {
-        setPromptState({ repo, session: existingSession })
-      } else {
-        setPendingAnalyse({ message: buildAnalyseMsg(repo), repoOwner: repo.owner, repoName: repo.repo })
-        setActiveView('copilot')
-      }
+      setCopilotHandoff({
+        kind: 'repo',
+        sourceView: 'explorer',
+        repoOwner: repo.owner,
+        repoName: repo.repo,
+        branch: repo.branch,
+        localPath: repo.local_path,
+        analyseMessage: buildAnalyseMsg(repo),
+        existingSession,
+      })
+      setActiveView('copilot')
     } finally {
       setAnalysingRepoId(null)
     }
-  }
-
-  async function handleContinue(repo: ClonedRepo, session: ChatSession) {
-    setPromptState(null)
-    const result = await api.history.get(session.id)
-    const messages = result.messages.map((m) => ({
-      id: `hist-${m.id}`,
-      role: m.role,
-      content: m.content,
-      toolCalls: m.tool_calls,
-    }))
-    loadSession(messages, session.id)
-    setRepoContext({ owner: repo.owner, repo: repo.repo })
-    setActiveView('copilot')
-  }
-
-  function handleStartFresh(repo: ClonedRepo) {
-    setPromptState(null)
-    clearChat()
-    setPendingAnalyse({ message: buildAnalyseMsg(repo), repoOwner: repo.owner, repoName: repo.repo })
-    setActiveView('copilot')
   }
 
   async function handleRepoIndex(repo: ClonedRepo) {
@@ -177,17 +171,20 @@ export function ExplorerPanel() {
     setIndexingRepoId(repo.id)
     setIndexError(null)
     try {
-      const job = await api.workspace.startIndexForRepo(repo.owner, repo.repo, dryRunIndexing)
-      setActiveIndexJob({
+      const job = await api.workspace.startIndexForRepo(repo.owner, repo.repo, dryRunIndexing, indexProfile, buildIndexFilters())
+      openIndexJob({
         jobId: job.job_id,
         title: job.title,
         path: job.path,
         repoName: job.repo_name,
         sourceKind: job.source_kind,
         dryRun: job.dry_run,
+        profile: job.profile,
+        includeLanguages: job.include_languages,
+        includePaths: job.include_paths,
+        excludePaths: job.exclude_paths,
       })
       void qc.invalidateQueries({ queryKey: ['index-jobs'] })
-      setActiveView('ingestion')
     } catch (error) {
       setIndexError(formatIndexError(error))
     } finally {
@@ -199,36 +196,53 @@ export function ExplorerPanel() {
     if (!localIndexPath.trim()) return
     setIndexError(null)
     try {
-      const job = await api.workspace.startIndexForPath(localIndexPath.trim(), dryRunIndexing)
-      setActiveIndexJob({
+      const job = await api.workspace.startIndexForPath(localIndexPath.trim(), dryRunIndexing, indexProfile, buildIndexFilters())
+      openIndexJob({
         jobId: job.job_id,
         title: job.title,
         path: job.path,
         repoName: job.repo_name,
         sourceKind: job.source_kind,
         dryRun: job.dry_run,
+        profile: job.profile,
+        includeLanguages: job.include_languages,
+        includePaths: job.include_paths,
+        excludePaths: job.exclude_paths,
       })
       void qc.invalidateQueries({ queryKey: ['index-jobs'] })
-      setActiveView('ingestion')
     } catch (error) {
       setIndexError(formatIndexError(error))
     }
   }
 
   function handleOpenJob(job: WorkspaceIndexJob) {
-    setActiveIndexJob({
+    openIndexJob({
       jobId: job.job_id,
       title: job.title,
       path: job.path,
       repoName: job.repo_name,
       sourceKind: job.source_kind,
       dryRun: job.dry_run,
+      profile: job.profile,
+      includeLanguages: job.include_languages,
+      includePaths: job.include_paths,
+      excludePaths: job.exclude_paths,
     })
-    setActiveView('ingestion')
+  }
+
+  function buildIndexFilters(): WorkspaceIndexFilters {
+    const include_languages = splitFilterInput(indexLanguagesInput)
+    const include_paths = splitFilterInput(includePathsInput)
+    const exclude_paths = splitFilterInput(excludePathsInput)
+    return {
+      ...(include_languages.length > 0 ? { include_languages } : {}),
+      ...(include_paths.length > 0 ? { include_paths } : {}),
+      ...(exclude_paths.length > 0 ? { exclude_paths } : {}),
+    }
   }
 
   return (
-    <div className="flex-1 glass-panel p-6 flex flex-col gap-6 overflow-hidden">
+    <div className="flex-1 glass-panel p-6 flex flex-col gap-6 overflow-y-auto">
       {/* Header */}
       <div className="flex items-center gap-3">
         <span className="material-symbols-outlined text-primary text-[28px]">folder_open</span>
@@ -249,6 +263,49 @@ export function ExplorerPanel() {
             Dry run index only
           </label>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-[10px] uppercase text-outline">Profile</span>
+          {(['curated', 'balanced', 'comprehensive'] as const).map((profile) => (
+            <button
+              key={profile}
+              type="button"
+              onClick={() => setIndexProfile(profile)}
+              className={`rounded border px-2.5 py-1 font-mono text-[10px] uppercase transition-colors ${
+                indexProfile === profile
+                  ? 'border-secondary/50 bg-secondary/10 text-secondary'
+                  : 'border-outline-variant/30 text-on-surface-variant hover:border-secondary/30'
+              }`}
+            >
+              {profile}
+            </button>
+          ))}
+        </div>
+        <div className="grid gap-2 md:grid-cols-3">
+          <input
+            type="text"
+            value={indexLanguagesInput}
+            onChange={(e) => setIndexLanguagesInput(e.target.value)}
+            placeholder="Languages: python,typescript"
+            className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-3 py-2 text-xs font-mono text-on-surface placeholder:text-outline/50 focus:outline-none focus:border-primary/50"
+          />
+          <input
+            type="text"
+            value={includePathsInput}
+            onChange={(e) => setIncludePathsInput(e.target.value)}
+            placeholder="Include paths: src/**,web/src/**"
+            className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-3 py-2 text-xs font-mono text-on-surface placeholder:text-outline/50 focus:outline-none focus:border-primary/50"
+          />
+          <input
+            type="text"
+            value={excludePathsInput}
+            onChange={(e) => setExcludePathsInput(e.target.value)}
+            placeholder="Exclude paths: tests/**,**/*.spec.ts"
+            className="bg-surface-container-lowest border border-outline-variant/30 rounded-lg px-3 py-2 text-xs font-mono text-on-surface placeholder:text-outline/50 focus:outline-none focus:border-primary/50"
+          />
+        </div>
+        <p className="text-[11px] text-on-surface-variant font-mono">
+          Optional pre-index filters use comma-separated values. Path filters match repo-relative glob patterns.
+        </p>
         <form onSubmit={handleClone} className="flex gap-2">
           <input
             type="text"
@@ -322,34 +379,32 @@ export function ExplorerPanel() {
                     )}
                     Index
                   </button>
-                </div>
-
-                {/* Continue / Start Fresh inline prompt */}
-                {promptState?.repo.id === repo.id && (
-                  <div className="mx-1 px-3 py-2.5 bg-primary/5 border border-primary/20 rounded-b-lg space-y-2">
-                    <p className="text-[11px] text-on-surface-variant font-mono">
-                      Last analysed{' '}
-                      <span className="text-on-surface">
-                        {new Date(promptState.session.updated_at * 1000).toLocaleDateString()}
-                      </span>
-                      . Continue that session or start fresh?
-                    </p>
-                    <div className="flex gap-2">
+                  {confirmDeleteRepoId === repo.id ? (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className="text-[10px] font-mono text-error uppercase">Delete all patterns?</span>
                       <button
-                        onClick={() => handleContinue(repo, promptState.session)}
-                        className="flex-1 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 text-primary rounded text-[10px] font-mono uppercase transition-colors"
+                        onClick={() => deleteRepoMutation.mutate({ owner: repo.owner, repo: repo.repo })}
+                        disabled={deleteRepoMutation.isPending}
+                        className="px-2 py-1 text-error hover:bg-error/10 rounded text-[10px] font-mono uppercase transition-colors disabled:opacity-50"
                       >
-                        Continue
+                        {deleteRepoMutation.isPending ? '…' : 'Yes'}
                       </button>
                       <button
-                        onClick={() => handleStartFresh(repo)}
-                        className="flex-1 px-3 py-1.5 bg-surface-container-highest/50 hover:bg-surface-container-highest text-on-surface-variant rounded text-[10px] font-mono uppercase transition-colors"
+                        onClick={() => setConfirmDeleteRepoId(null)}
+                        className="px-2 py-1 text-on-surface-variant hover:bg-surface-bright/30 rounded text-[10px] font-mono uppercase transition-colors"
                       >
-                        Start Fresh
+                        No
                       </button>
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <button
+                      onClick={() => setConfirmDeleteRepoId(repo.id)}
+                      className="flex items-center gap-1 px-2 py-1 text-error/70 hover:bg-error/10 rounded text-[10px] font-mono uppercase transition-colors shrink-0"
+                    >
+                      <span className="material-symbols-outlined text-[13px]">delete</span>
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -366,11 +421,12 @@ export function ExplorerPanel() {
             {recentIndexJobs.map((job) => (
               <button
                 key={job.job_id}
+                type="button"
                 onClick={() => handleOpenJob(job)}
                 className="w-full rounded-lg border border-outline-variant/20 bg-surface-container-lowest/40 px-3 py-2 text-left hover:border-primary/30 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <span className={`material-symbols-outlined text-[16px] ${job.status === 'running' ? 'text-tertiary' : job.status === 'failed' ? 'text-secondary' : 'text-primary'}`}>
+                  <span className={`material-symbols-outlined text-[16px] ${indexJobStatusClass(job.status)}`}>
                     {job.source_kind === 'repo' ? 'deployed_code' : 'folder_open'}
                   </span>
                   <div className="min-w-0 flex-1">
@@ -382,11 +438,29 @@ export function ExplorerPanel() {
                       {job.dry_run && (
                         <span className="rounded bg-secondary/15 px-2 py-0.5 text-[10px] uppercase text-secondary">dry run</span>
                       )}
+                      <span className="rounded bg-surface-container-high px-2 py-0.5 text-[10px] uppercase text-on-surface-variant">
+                        {job.profile}
+                      </span>
+                      {job.include_languages.length > 0 && (
+                        <span className="rounded bg-tertiary/15 px-2 py-0.5 text-[10px] uppercase text-tertiary">
+                          lang {formatFilterPreview(job.include_languages)}
+                        </span>
+                      )}
+                      {job.include_paths.length > 0 && (
+                        <span className="rounded bg-primary/15 px-2 py-0.5 text-[10px] uppercase text-primary">
+                          include {formatFilterPreview(job.include_paths)}
+                        </span>
+                      )}
+                      {job.exclude_paths.length > 0 && (
+                        <span className="rounded bg-secondary/15 px-2 py-0.5 text-[10px] uppercase text-secondary">
+                          exclude {formatFilterPreview(job.exclude_paths)}
+                        </span>
+                      )}
                     </div>
                     <p className="mt-1 truncate text-[11px] text-outline">{job.path}</p>
                   </div>
                   <div className="text-right">
-                    <p className={`text-[10px] font-mono uppercase ${job.status === 'running' ? 'text-tertiary' : job.status === 'failed' ? 'text-secondary' : 'text-primary'}`}>{job.status}</p>
+                    <p className={`text-[10px] font-mono uppercase ${indexJobStatusClass(job.status)}`}>{job.status}</p>
                     <p className="mt-1 text-[10px] text-outline">{new Date(job.updated_at * 1000).toLocaleString()}</p>
                   </div>
                 </div>
@@ -397,7 +471,7 @@ export function ExplorerPanel() {
       )}
 
       {/* Local workspace tree */}
-      <div className="flex-1 flex flex-col gap-2 min-h-0">
+      <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between gap-3">
           <span className="font-mono text-label-caps text-outline uppercase">Workspace</span>
           <div className="flex items-center gap-2">
@@ -443,7 +517,7 @@ export function ExplorerPanel() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto">
+        <div className="max-h-96 overflow-y-auto">
           {isLoading && (
             <div className="space-y-2">
               {[...Array(8)].map((_, i) => (
@@ -460,6 +534,20 @@ export function ExplorerPanel() {
   )
 }
 
+function splitFilterInput(value: string): string[] {
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function formatFilterPreview(values: string[]): string {
+  if (values.length <= 2) {
+    return values.join(', ')
+  }
+  return `${values.slice(0, 2).join(', ')} +${values.length - 2}`
+}
+
 function formatIndexError(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message
@@ -468,4 +556,10 @@ function formatIndexError(error: unknown): string {
     return error.message
   }
   return 'Index job failed to start.'
+}
+
+function indexJobStatusClass(status: WorkspaceIndexJob['status']): string {
+  if (status === 'running') return 'text-tertiary'
+  if (status === 'failed' || status === 'completed_with_errors') return 'text-secondary'
+  return 'text-primary'
 }

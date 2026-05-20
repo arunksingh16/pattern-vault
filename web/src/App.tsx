@@ -11,6 +11,7 @@ import { IngestionPanel } from '@/panels/IngestionPanel'
 import { UsagePanel } from '@/panels/UsagePanel'
 import { VaultPanel } from '@/panels/VaultPanel'
 import { MCPPanel } from '@/panels/MCPPanel'
+import { SettingsPanel } from '@/panels/SettingsPanel'
 import { useUIStore } from '@/stores/uiStore'
 import logo from '@/assets/logo.png'
 
@@ -82,6 +83,10 @@ function ViewRouter() {
     case 'mcp':
       return (
         <PanelGrid center={<MCPPanel />} />
+      )
+    case 'settings':
+      return (
+        <PanelGrid center={<SettingsPanel />} />
       )
     default:
       return (

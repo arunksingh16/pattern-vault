@@ -19,6 +19,7 @@ from src.indexer.profiles import DEFAULT_INDEXING_PROFILE, get_indexing_profile
 from src.store.db import (
     append_index_job_event,
     create_index_job,
+    delete_repo_and_patterns,
     get_cloned_repo,
     get_connection,
     get_index_job,
@@ -462,6 +463,20 @@ def list_cloned():
     try:
         init_db(conn)
         return list_cloned_repos(conn)
+    finally:
+        conn.close()
+
+
+@router.delete("/repos/{owner}/{repo}")
+def delete_repo(owner: str, repo: str):
+    """Delete a cloned repo registry entry and all patterns extracted from it."""
+    conn = get_connection(DB_PATH)
+    try:
+        init_db(conn)
+        result = delete_repo_and_patterns(conn, owner, repo)
+        if not result["repo_deleted"]:
+            raise HTTPException(status_code=404, detail=f"Repo {owner}/{repo} not found")
+        return result
     finally:
         conn.close()
 
