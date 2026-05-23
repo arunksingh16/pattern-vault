@@ -6,8 +6,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from src.api.deps import get_db
-from src.store.db import (
+from pattern_vault.api.deps import get_db
+from pattern_vault.store.db import (
     delete_pattern,
     get_pattern,
     insert_pattern,

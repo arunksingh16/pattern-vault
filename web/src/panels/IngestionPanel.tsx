@@ -103,7 +103,6 @@ export function IngestionPanel() {
     )
   }
 
-  const latestLog = logs[logs.length - 1]
   const sourceLabel = activeIndexJob.sourceKind ?? job?.source_kind ?? 'path'
   const profileLabel = activeIndexJob.profile ?? job?.profile ?? 'curated'
   const includeLanguages = activeIndexJob.includeLanguages ?? job?.include_languages ?? []
@@ -133,6 +132,9 @@ export function IngestionPanel() {
               )}
               {includePaths.length > 0 && (
                 <span className="rounded bg-surface-container-high px-1.5 py-0.5 text-[9px] uppercase text-on-surface-variant">include: {includePaths.join(', ')}</span>
+              )}
+              {excludePaths.length > 0 && (
+                <span className="rounded bg-secondary/15 px-1.5 py-0.5 text-[9px] uppercase text-secondary">exclude: {excludePaths.join(', ')}</span>
               )}
             </div>
             <p className="mt-0.5 truncate text-[11px] text-on-surface-variant">{activeIndexJob.path}</p>

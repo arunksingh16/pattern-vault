@@ -5,8 +5,8 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from src.api.deps import get_db
-from src.store.db import insert_insight, list_insights, get_insight, delete_insight
+from pattern_vault.api.deps import get_db
+from pattern_vault.store.db import insert_insight, list_insights, get_insight, delete_insight
 
 router = APIRouter(prefix="/insights", tags=["insights"])
 

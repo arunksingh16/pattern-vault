@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
-from src.client import extract_usage_snapshot
-from src.store.db import get_connection, get_daily_token_usage, init_db, record_token_usage
+from pattern_vault.client import extract_usage_snapshot
+from pattern_vault.store.db import get_connection, get_daily_token_usage, init_db, record_token_usage
 
 
 def test_extract_usage_snapshot_prefers_provider_counts():

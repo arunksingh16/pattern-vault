@@ -4,8 +4,8 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from src.api.deps import get_db
-from src.store.db import list_sessions, get_session_messages, delete_session, get_latest_session_for_repo
+from pattern_vault.api.deps import get_db
+from pattern_vault.store.db import list_sessions, get_session_messages, delete_session, get_latest_session_for_repo
 
 router = APIRouter(prefix="/history", tags=["history"])
 

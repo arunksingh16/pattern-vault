@@ -4,8 +4,8 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, Query
 
-from src.api.deps import get_db
-from src.store.db import get_daily_token_usage
+from pattern_vault.api.deps import get_db
+from pattern_vault.store.db import get_daily_token_usage
 
 router = APIRouter(prefix="/usage", tags=["usage"])
 

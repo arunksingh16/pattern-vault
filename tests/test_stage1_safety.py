@@ -1,9 +1,9 @@
 import json
 
-from src.agent.tools import _tool_read_file, _tool_scan_directory
-from src.indexer.batch import index_directory
-from src.indexer.chunker import chunk_file, scan_directory
-from src.store.db import (
+from pattern_vault.agent.tools import _tool_read_file, _tool_scan_directory
+from pattern_vault.indexer.batch import index_directory
+from pattern_vault.indexer.chunker import chunk_file, scan_directory
+from pattern_vault.store.db import (
     DEFAULT_DB_PATH,
     delete_pattern,
     get_connection,
@@ -15,8 +15,8 @@ from src.store.db import (
     search_fts,
     update_pattern,
 )
-from src.ui import app as ui_app
-from src.ui.app import _parse_pattern_edit_payload
+from pattern_vault.ui import app as ui_app
+from pattern_vault.ui.app import _parse_pattern_edit_payload
 
 
 def test_resolve_db_path_prefers_explicit_then_env(monkeypatch, tmp_path):

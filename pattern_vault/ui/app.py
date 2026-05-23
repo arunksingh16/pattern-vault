@@ -1,7 +1,7 @@
 """
 Pattern Vault — Chainlit Chat UI.
 
-Run with: chainlit run src/ui/app.py
+Run with: chainlit run pattern_vault/ui/app.py
 
 Provides:
 - Interactive repo analysis via Claude tool-use loop
@@ -28,11 +28,11 @@ _project_root = Path(__file__).resolve().parent.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from src.client import make_async_client, get_model, describe_backend  # noqa: E402
-from src.agent.tools import TOOL_DEFINITIONS, execute_tool, get_workspace_roots  # noqa: E402
-from src.agent.orchestrator import SYSTEM_PROMPT  # noqa: E402
-from src.server.mcp_server import mcp as pattern_vault_mcp  # noqa: E402
-from src.store.db import (  # noqa: E402
+from pattern_vault.client import make_async_client, get_model, describe_backend  # noqa: E402
+from pattern_vault.agent.tools import TOOL_DEFINITIONS, execute_tool, get_workspace_roots  # noqa: E402
+from pattern_vault.agent.orchestrator import SYSTEM_PROMPT  # noqa: E402
+from pattern_vault.server.mcp_server import mcp as pattern_vault_mcp  # noqa: E402
+from pattern_vault.store.db import (  # noqa: E402
     delete_pattern,
     get_connection,
     get_pattern,
@@ -527,8 +527,8 @@ def _format_mcp_status() -> str:
     finally:
         conn.close()
 
-    command = "python src/server/mcp_server.py"
-    http_command = "python -m src.cli serve --transport http --port 8000"
+    command = "python -m pattern_vault.server.mcp_server"
+    http_command = "pv serve --transport http --port 8002"
 
     lines = [
         "**MCP Server**",

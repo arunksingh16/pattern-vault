@@ -23,7 +23,7 @@ Supports four backends, selected by environment variables:
     Model: PATTERN_VAULT_MODEL or qwen2.5-coder:7b
 
 Usage:
-    from src.client import make_client, make_async_client, get_model
+    from pattern_vault.client import make_client, make_async_client, get_model
 
     client = make_client()          # sync
     client = make_async_client()    # async

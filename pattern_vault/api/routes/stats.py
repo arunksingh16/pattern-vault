@@ -5,9 +5,9 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from src.api.deps import DB_PATH, get_db
-from src.client import describe_backend
-from src.store.db import get_stats, list_categories, list_tags
+from pattern_vault.api.deps import DB_PATH, get_db
+from pattern_vault.client import describe_backend
+from pattern_vault.store.db import get_stats, list_categories, list_tags
 
 router = APIRouter(tags=["stats"])
 

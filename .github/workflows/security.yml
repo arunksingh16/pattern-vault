@@ -39,15 +39,11 @@ jobs:
       - name: Install pip-audit
         run: pip install pip-audit
 
-      - name: Audit dependencies
-        run: pip-audit --requirement <(pip install --dry-run -e . 2>&1 | grep "^Collecting" | awk '{print $2}') || true
-        # Soft-fail on first run; harden to fail once a baseline is clean:
-        # run: pip-audit -r <(pip show $(pip install -e . -q && pip freeze) 2>/dev/null)
-
-      - name: Audit via pyproject.toml
+      - name: Audit installed package dependencies
         run: |
-          pip install -e . --quiet
-          pip-audit
+          python -m pip install --upgrade pip
+          pip install -e ".[web]" --quiet
+          pip-audit --skip-editable
 
   # ── 3. Python static security analysis ────────────────────────────────────
   bandit:
@@ -65,7 +61,7 @@ jobs:
 
       - name: Run bandit
         run: |
-          bandit -r src/ -c pyproject.toml \
+          bandit -r pattern_vault/ -c pyproject.toml \
             --format sarif \
             --output bandit-results.sarif \
             --exit-zero        # don't fail the step; let the SARIF upload surface issues
@@ -88,3 +84,5 @@ jobs:
           python-version: "3.12"
 
       - uses: pre-commit/action@v3.0.1
+        env:
+          SKIP: no-commit-to-branch

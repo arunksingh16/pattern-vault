@@ -64,7 +64,7 @@ _GITHUB_URL_RE = re.compile(
     r'^https://github\.com/([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+?)(\.git)?/?$'
 )
 
-# .temp/ lives next to src/ in the project root
+# .temp/ lives next to pattern_vault/ in the project root
 _PROJECT_ROOT = Path(__file__).parents[2]
 CLONE_BASE_DIR = _PROJECT_ROOT / ".temp"
 

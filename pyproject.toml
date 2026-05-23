@@ -1,8 +1,28 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "pattern-vault"
 version = "0.1.0"
 description = "Extract, index, and retrieve code patterns from any repo"
+readme = "README.md"
 requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+keywords = ["mcp", "code-search", "patterns", "llm", "developer-tools"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Framework :: FastAPI",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development",
+]
 dependencies = [
     "anthropic>=0.40.0",
     "openai>=1.0.0",
@@ -11,9 +31,6 @@ dependencies = [
     "tree-sitter-python>=0.23.0",
     "tree-sitter-javascript>=0.23.0",
     "tree-sitter-typescript>=0.23.0",
-    "chainlit>=2.0.0",
-    "sentence-transformers>=3.0.0",
-    "sqlite-vec>=0.1.0",
     "pydantic>=2.0",
 ]
 
@@ -25,14 +42,30 @@ dev = [
     "detect-secrets>=1.5.0",
     "pip-audit>=2.7.0",
     "ruff>=0.4.0",
+    "chainlit>=2.0.0",
 ]
 web = [
     "fastapi>=0.115.0",
+    "starlette>=1.0.1",
     "uvicorn[standard]>=0.34.0",
+]
+legacy-ui = [
+    "chainlit>=2.0.0",
+]
+search = [
+    "sentence-transformers>=3.0.0",
+    "sqlite-vec>=0.1.0",
+]
+bedrock = [
+    "anthropic[bedrock]>=0.40.0",
 ]
 
 [project.scripts]
-pv = "src.cli:main"
+pv = "pattern_vault.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pattern_vault*"]
+exclude = ["tests*", "web*"]
 
 [tool.bandit]
 exclude_dirs = ["venv", ".venv", "tests"]

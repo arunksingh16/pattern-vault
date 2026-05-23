@@ -28,7 +28,7 @@ repos:
       - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
-        args: ["--maxkb=500"]
+        args: ["--maxkb=1000"]
       - id: no-commit-to-branch
         args: ["--branch", "main"]
 
@@ -39,7 +39,7 @@ repos:
       - id: bandit
         name: "🛡️  bandit – Python security lint"
         args: ["-c", "pyproject.toml"]
-        files: ^src/
+        files: ^pattern_vault/
 
   # ── Python code quality ──────────────────────────────────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit

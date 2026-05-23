@@ -2,11 +2,11 @@
 Pattern Vault — CLI entry point.
 
 Usage:
-    python -m src.cli index <directory> [--dry-run] [--repo-name NAME]
-    python -m src.cli search <query> [--category CAT] [--language LANG]
-    python -m src.cli stats
-    python -m src.cli chat
-    python -m src.cli serve [--port PORT]
+    python -m pattern_vault.cli index <directory> [--dry-run] [--repo-name NAME]
+    python -m pattern_vault.cli search <query> [--category CAT] [--language LANG]
+    python -m pattern_vault.cli stats
+    python -m pattern_vault.cli chat
+    python -m pattern_vault.cli serve [--port PORT]
 """
 
 import argparse

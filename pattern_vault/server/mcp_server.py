@@ -18,7 +18,7 @@ _project_root = Path(__file__).resolve().parent.parent.parent
 if str(_project_root) not in sys.path:
     sys.path.insert(0, str(_project_root))
 
-from src.store.db import (  # noqa: E402
+from pattern_vault.store.db import (  # noqa: E402
     get_connection,
     init_db,
     insert_pattern,
@@ -342,7 +342,7 @@ async def reindex(
     Returns:
         Indexing statistics: files scanned, chunks extracted, patterns found/stored
     """
-    from src.indexer.batch import index_directory
+    from pattern_vault.indexer.batch import index_directory
 
     logs = []
     stats = index_directory(

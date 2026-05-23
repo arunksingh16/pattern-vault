@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from src.store.db import get_connection, init_db, record_token_usage
+from pattern_vault.store.db import get_connection, init_db, record_token_usage
 
 EXTRACTION_SYSTEM_PROMPT = """\
 You are a senior software engineer reviewing code to identify reusable patterns.
@@ -203,7 +203,7 @@ def _record_extraction_usage(
     response,
     user_message: str,
 ) -> None:
-    from src.client import extract_usage_snapshot, get_provider_name
+    from pattern_vault.client import extract_usage_snapshot, get_provider_name
 
     usage = extract_usage_snapshot(
         response,
@@ -241,7 +241,7 @@ def extract_patterns_sync(
     """
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.client import get_provider_name, make_client, get_model as _get_model
+    from pattern_vault.client import get_provider_name, make_client, get_model as _get_model
 
     try:
         client = make_client()
@@ -280,7 +280,7 @@ async def extract_patterns_async(
     """Async version of extract_patterns_sync."""
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
-    from src.client import get_provider_name, make_async_client, get_model as _get_model
+    from pattern_vault.client import get_provider_name, make_async_client, get_model as _get_model
 
     try:
         client = make_async_client()
