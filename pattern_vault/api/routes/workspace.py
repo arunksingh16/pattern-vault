@@ -12,11 +12,11 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.agent.tools import get_workspace_roots, _tool_clone_github_repo
-from src.api.deps import DB_PATH
-from src.indexer.batch import index_directory
-from src.indexer.profiles import DEFAULT_INDEXING_PROFILE, get_indexing_profile
-from src.store.db import (
+from pattern_vault.agent.tools import get_workspace_roots, _tool_clone_github_repo
+from pattern_vault.api.deps import DB_PATH
+from pattern_vault.indexer.batch import index_directory
+from pattern_vault.indexer.profiles import DEFAULT_INDEXING_PROFILE, get_indexing_profile
+from pattern_vault.store.db import (
     append_index_job_event,
     create_index_job,
     delete_repo_and_patterns,

@@ -5,11 +5,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.deps import DB_PATH
-from src.api.routes import chat, history, insights, mcp_monitor, patterns, stats, usage, workspace
-from src.api.routes.mcp_monitor import MCPServerMonitor
-from src.api.routes.workspace import WorkspaceIndexManager
-from src.store.db import get_connection, init_db
+from pattern_vault.api.deps import DB_PATH
+from pattern_vault.api.routes import chat, history, insights, mcp_monitor, patterns, stats, usage, workspace
+from pattern_vault.api.routes.mcp_monitor import MCPServerMonitor
+from pattern_vault.api.routes.workspace import WorkspaceIndexManager
+from pattern_vault.store.db import get_connection, init_db
 
 
 @asynccontextmanager

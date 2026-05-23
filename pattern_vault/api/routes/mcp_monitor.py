@@ -115,7 +115,7 @@ class MCPServerMonitor:
             command = [
                 sys.executable,
                 "-m",
-                "src.cli",
+                "pattern_vault.cli",
                 "serve",
                 "--transport",
                 "http",

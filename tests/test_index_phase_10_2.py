@@ -2,16 +2,16 @@ import asyncio
 import json
 from types import SimpleNamespace
 
-from src.api.routes import workspace
-from src.indexer import batch as batch_module
-from src.indexer.batch import index_directory
-from src.indexer.extractor import (
+from pattern_vault.api.routes import workspace
+from pattern_vault.indexer import batch as batch_module
+from pattern_vault.indexer.batch import index_directory
+from pattern_vault.indexer.extractor import (
     ExtractionResponseError,
     ExtractionResult,
     extract_patterns_sync,
 )
-from src.indexer.profiles import INDEXING_PROFILES, IndexingProfile
-from src.store.db import get_connection, get_index_job, init_db
+from pattern_vault.indexer.profiles import INDEXING_PROFILES, IndexingProfile
+from pattern_vault.store.db import get_connection, get_index_job, init_db
 
 
 class _FakeMessages:
@@ -28,8 +28,10 @@ class _FakeClient:
 
 
 def test_extract_patterns_sync_rejects_empty_content(monkeypatch, tmp_path):
+    monkeypatch.setenv("PATTERN_VAULT_BACKEND", "anthropic")
+    monkeypatch.delenv("PATTERN_VAULT_MODEL", raising=False)
     response = SimpleNamespace(content=[], usage=None)
-    monkeypatch.setattr("src.client.make_client", lambda: _FakeClient(response))
+    monkeypatch.setattr("pattern_vault.client.make_client", lambda: _FakeClient(response))
 
     try:
         extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
@@ -51,7 +53,7 @@ def test_extract_patterns_sync_uses_first_text_block(monkeypatch, tmp_path):
         ],
         usage=None,
     )
-    monkeypatch.setattr("src.client.make_client", lambda: _FakeClient(response))
+    monkeypatch.setattr("pattern_vault.client.make_client", lambda: _FakeClient(response))
 
     results = extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
 
@@ -65,7 +67,7 @@ def test_extract_patterns_sync_rejects_invalid_json(monkeypatch, tmp_path):
         content=[SimpleNamespace(type="text", text="not json")],
         usage=None,
     )
-    monkeypatch.setattr("src.client.make_client", lambda: _FakeClient(response))
+    monkeypatch.setattr("pattern_vault.client.make_client", lambda: _FakeClient(response))
 
     try:
         extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
@@ -80,7 +82,7 @@ def test_extract_patterns_sync_rejects_malformed_result_shape(monkeypatch, tmp_p
         content=[SimpleNamespace(type="text", text='[{"chunk_index": "0", "is_pattern": true}]')],
         usage=None,
     )
-    monkeypatch.setattr("src.client.make_client", lambda: _FakeClient(response))
+    monkeypatch.setattr("pattern_vault.client.make_client", lambda: _FakeClient(response))
 
     try:
         extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
@@ -236,7 +238,7 @@ def test_index_directory_profile_budget_stops_after_limit(monkeypatch, tmp_path)
 
     monkeypatch.setattr(batch_module, "BATCH_SIZE", 2)
     monkeypatch.setattr(
-        "src.indexer.profiles.INDEXING_PROFILES",
+        "pattern_vault.indexer.profiles.INDEXING_PROFILES",
         {
             **INDEXING_PROFILES,
             "curated": IndexingProfile(
@@ -384,7 +386,7 @@ def test_stream_index_replay_starts_with_job_summary(monkeypatch, tmp_path):
             "patterns_rejected": 0,
             "current_stage": "scan",
         }
-        from src.store.db import append_index_job_event, create_index_job
+        from pattern_vault.store.db import append_index_job_event, create_index_job
 
         create_index_job(
             conn,

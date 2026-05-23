@@ -7,6 +7,12 @@ run.sh
 .playwright/
 .playwright-mcp/
 web/.chainlit
+.agents/
+.claude/
+.codex/
+.files/
+HANDOFF.md
+image.png
 # --- Python ---
 __pycache__/
 *.pyc
@@ -45,6 +51,8 @@ htmlcov/
 # --- Web frontend ---
 web/node_modules/
 web/dist/
+web/.vite/
+web/tsconfig.tsbuildinfo
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

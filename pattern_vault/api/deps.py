@@ -3,7 +3,7 @@
 import sqlite3
 from collections.abc import Generator
 
-from src.store.db import get_connection, init_db, resolve_db_path
+from pattern_vault.store.db import get_connection, init_db, resolve_db_path
 
 DB_PATH = resolve_db_path()
 

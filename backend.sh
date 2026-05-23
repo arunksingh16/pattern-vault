@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${PATTERN_VAULT_STATE_DIR:-$ROOT_DIR/.temp/backend}"
 PID_FILE="$STATE_DIR/backend.pid"
 LOG_FILE="$STATE_DIR/backend.log"
-APP_MODULE="${PATTERN_VAULT_APP_MODULE:-src.api.main:app}"
+APP_MODULE="${PATTERN_VAULT_APP_MODULE:-pattern_vault.api.main:app}"
 HOST="${PATTERN_VAULT_API_HOST:-127.0.0.1}"
 PORT="${PATTERN_VAULT_API_PORT:-8001}"
 DEFAULT_PYTHON_BIN="$ROOT_DIR/venv/bin/python"
@@ -30,7 +30,7 @@ Environment overrides:
   PATTERN_VAULT_API_HOST    Host to bind (default: 127.0.0.1)
   PATTERN_VAULT_API_PORT    Port to bind (default: 8001)
   PATTERN_VAULT_STATE_DIR   Directory for pid/log files (default: .temp/backend)
-  PATTERN_VAULT_APP_MODULE  Uvicorn app module (default: src.api.main:app)
+  PATTERN_VAULT_APP_MODULE  Uvicorn app module (default: pattern_vault.api.main:app)
 EOF
 }
 

@@ -39,7 +39,7 @@ repos:
       - id: bandit
         name: "🛡️  bandit – Python security lint"
         args: ["-c", "pyproject.toml"]
-        files: ^src/
+        files: ^pattern_vault/
 
   # ── Python code quality ──────────────────────────────────────────────────────
   - repo: https://github.com/astral-sh/ruff-pre-commit

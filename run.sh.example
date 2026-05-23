@@ -25,4 +25,4 @@ export PATTERN_VAULT_MODEL="eu.anthropic.claude-haiku-4-5-20251001-v1:0"
 # export PATTERN_VAULT_DB="/path/to/custom.db"
 
 # ── Launch ────────────────────────────────────────────────────────────────────
-chainlit run src/ui/app.py   # or: python -m src.cli chat
+./dev.sh start

@@ -8,9 +8,9 @@ from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.agent.orchestrator import run_agent_turn_async
-from src.api.deps import DB_PATH
-from src.store.db import get_connection, init_db, create_session, append_message, get_cloned_repo
+from pattern_vault.agent.orchestrator import run_agent_turn_async
+from pattern_vault.api.deps import DB_PATH
+from pattern_vault.store.db import get_connection, init_db, create_session, append_message, get_cloned_repo
 
 router = APIRouter()
 

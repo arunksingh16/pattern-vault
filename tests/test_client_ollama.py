@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from src.client import (
+from pattern_vault.client import (
     _anthropic_messages_to_openai,
     _normalize_ollama_base_url,
     get_model,
