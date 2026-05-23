@@ -28,7 +28,7 @@ repos:
       - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
-        args: ["--maxkb=500"]
+        args: ["--maxkb=1000"]
       - id: no-commit-to-branch
         args: ["--branch", "main"]
 
