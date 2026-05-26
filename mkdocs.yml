@@ -1,0 +1,70 @@
+site_name: Pattern Vault
+site_url: https://arunksingh16.github.io/pattern-vault/
+site_description: Personal code pattern knowledge base powered by AST parsing and LLMs.
+site_author: Arun Singh
+repo_name: arunksingh16/pattern-vault
+repo_url: https://github.com/arunksingh16/pattern-vault
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    # Slate/Dark palette by default, toggleable to light mode
+    - scheme: slate
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: deep purple
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            show_source: true
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:pymdownx.emoji.twemoji
+      emoji_generator: !!python/name:pymdownx.emoji.to_svg
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Architecture: architecture.md
+  - CLI Reference: cli.md
+  - React Dashboard: react-dashboard.md
+  - MCP Integration: mcp.md
+  - Developer Guide: developer-guide.md

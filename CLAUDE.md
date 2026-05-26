@@ -18,7 +18,7 @@ A personal code pattern knowledge base. Point it at any repo, it extracts reusab
 ├─────────────────────────────┼───────────────────────────────────────┤
 │  AGENT LAYER                │                                       │
 │  ┌──────────────────────────┴──────────────────────────────────┐    │
-│  │ Orchestrator (src/agent/orchestrator.py)                    │    │
+│  │ Orchestrator (pattern_vault/agent/orchestrator.py)          │    │
 │  │ Claude tool-use loop — Claude decides tool call sequence    │    │
 │  │ Tools: scan_directory, read_file, parse_symbols,            │    │
 │  │        save_pattern, save_insight, search_patterns,         │    │
@@ -45,7 +45,7 @@ A personal code pattern knowledge base. Point it at any repo, it extracts reusab
 ├─────────────────────────────────────────────────────────────────────┤
 │  CLIENT LAYER                                                       │
 │  ┌────────────────────────────────────────────────────────────────┐ │
-│  │ src/client.py — factory for sync/async model clients           │ │
+│  │ pattern_vault/client.py — factory for sync/async model clients │ │
 │  │ Backends: anthropic (direct), bedrock (AWS), bifrost, ollama   │ │
 │  │ Selected by PATTERN_VAULT_BACKEND env var                      │ │
 │  └────────────────────────────────────────────────────────────────┘ │
@@ -59,13 +59,12 @@ pattern-vault/
 ├── pyproject.toml              # project metadata + dependencies
 ├── CLAUDE.md                   # ← you are here
 ├── README.md                   # user-facing docs
-├── DESIGN.md                   # UI design tokens (colors, typography, spacing, components)
 ├── HANDOFF.md                  # Agent handoff document for UI redesign progress
 ├── .mcp.json                   # MCP config for Claude Code
 ├── .gitignore
 ├── .chainlit/
 │   └── config.toml             # Chainlit UI settings
-├── src/
+├── pattern_vault/
 │   ├── __init__.py
 │   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost/ollama)
 │   ├── cli.py                  # CLI entry point: index, search, stats, chat, serve
@@ -89,8 +88,13 @@ pattern-vault/
 │   │   ├── main.py             # App, CORS, lifespan, router mounts
 │   │   ├── deps.py             # DB connection dependency injection
 │   │   └── routes/
+│   │       ├── workspace.py    # Repo/path indexing jobs, filters, stream/replay
 │   │       ├── patterns.py     # CRUD + FTS search for patterns
 │   │       ├── stats.py        # Health check, vault stats, categories, tags
+│   │       ├── usage.py        # Token usage summaries
+│   │       ├── insights.py     # Repo-level insights
+│   │       ├── history.py      # Chat history listing/reads
+│   │       ├── mcp_monitor.py  # Dedicated HTTP MCP process monitor
 │   │       └── chat.py         # ★ POST /api/chat → SSE stream from orchestrator
 │   └── ui/
 │       ├── __init__.py
@@ -98,7 +102,7 @@ pattern-vault/
 └── web/                        # ★ React frontend (Vite + React 19 + TypeScript)
     ├── package.json
     ├── vite.config.ts          # Proxies /api to :8001, @/ path alias
-    ├── tailwind.config.ts      # DESIGN.md tokens mapped to Tailwind
+    ├── tailwind.config.ts      # Design tokens mapped to Tailwind
     ├── tsconfig.json
     ├── index.html
     └── src/
@@ -114,7 +118,7 @@ pattern-vault/
         │   ├── uiStore.ts      # Zustand: active view, sidebar, selection
         │   └── chatStore.ts    # ★ Zustand: messages, streaming, tool calls
         ├── components/         # GlassPanel, SideNav, SearchBar, CodeBlock, Chip, ToolStep
-        ├── panels/             # PatternBrowser, PatternInspector, ChatPanel
+        ├── panels/             # Vault, Explorer, Ingestion, Chat, MCP, Usage, Insights
         └── layouts/PanelGrid.tsx  # CSS Grid multi-pane layout
 ```
 
@@ -142,13 +146,13 @@ User: "Look at /path/to/repo"
   → Claude confirms what was saved
 ```
 
-The loop runs in `src/agent/orchestrator.py`. It yields events (`text`, `tool_call`, `tool_result`, `done`, `error`) which the CLI prints directly and the Chainlit UI renders as collapsible steps.
+The loop runs in `pattern_vault/agent/orchestrator.py`. It yields events (`text`, `tool_call`, `tool_result`, `done`, `error`) which the CLI prints directly and the React/Chainlit UIs render as tool steps.
 
 Max rounds: 15 (safety limit in `MAX_TOOL_ROUNDS`).
 
 ## Multi-backend client system
 
-`src/client.py` is the single place where API clients are created. Everything else imports from here.
+`pattern_vault/client.py` is the single place where API clients are created. Everything else imports from here.
 
 ```
 PATTERN_VAULT_BACKEND=anthropic  → anthropic.Anthropic / AsyncAnthropic
@@ -159,9 +163,9 @@ PATTERN_VAULT_BACKEND=ollama     → OpenAI / AsyncOpenAI wrapped in Anthropic-c
 
 Functions: `make_client()`, `make_async_client()`, `get_model()`, `describe_backend()`
 
-Consumers: `src/agent/orchestrator.py`, `src/indexer/extractor.py`, `src/ui/app.py`
+Consumers: `pattern_vault/agent/orchestrator.py`, `pattern_vault/indexer/extractor.py`, `pattern_vault/ui/app.py`
 
-The MCP server (`src/server/mcp_server.py`) does NOT call the Claude API directly — it only reads/writes the database and delegates to the batch indexer when `reindex` is called.
+The MCP server (`pattern_vault/server/mcp_server.py`) does NOT call the Claude API directly — it only reads/writes the database and delegates to the batch indexer when `reindex` is called.
 
 ## Database schema
 
@@ -190,7 +194,7 @@ Dedup: `content_hash` = sha256(code_text)[:16]. Same code → same pattern ID re
 
 ## Pattern categories
 
-The extraction prompt in `src/indexer/extractor.py` classifies patterns into:
+The extraction prompt in `pattern_vault/indexer/extractor.py` classifies patterns into:
 
 `design_pattern`, `resilience`, `api_pattern`, `data_access`, `async_pattern`, `config`, `testing`, `utility`, `security`, `general`
 
@@ -235,23 +239,23 @@ export PATTERN_VAULT_MODEL=qwen2.5-coder:7b
 export ANTHROPIC_API_KEY=sk-ant-...
 
 # ── CLI commands ──
-python -m src.cli index /path/to/repo --dry-run    # scan+chunk only, no API
-python -m src.cli index /path/to/repo               # full index
-python -m src.cli search "retry backoff"             # search patterns
-python -m src.cli search "auth" --category api_pattern --language python
-python -m src.cli stats                              # vault statistics
-python -m src.cli chat                               # terminal agentic chat
+uv run pv index /path/to/repo --dry-run    # scan+chunk only, no API
+uv run pv index /path/to/repo               # full index
+uv run pv search "retry backoff"             # search patterns
+uv run pv search "auth" --category api_pattern --language python
+uv run pv stats                              # vault statistics
+uv run pv chat                               # terminal agentic chat
 
 # ── Custom React UI (primary) ──
-uvicorn src.api.main:app --port 8001 --reload       # backend API
+uvicorn pattern_vault.api.main:app --port 8001 --reload       # backend API
 cd web && npm run dev                                # frontend at :5173 (proxies /api to :8001)
 
 # ── Legacy Chainlit UI (still works) ──
-chainlit run src/ui/app.py                           # browser chat at :8000
+chainlit run pattern_vault/ui/app.py                           # browser chat at :8000
 
 # ── MCP server ──
-python src/server/mcp_server.py                      # MCP server (stdio)
-python -m src.cli serve --transport http --port 8000  # MCP server (HTTP)
+uv run python -m pattern_vault.server.mcp_server                # MCP server (stdio)
+uv run pv serve --transport http --port 8002                    # MCP server (HTTP)
 ```
 
 ## MCP tools (for Claude Code / claude.ai)
@@ -269,7 +273,7 @@ python -m src.cli serve --transport http --port 8000  # MCP server (HTTP)
 
 ## Agent tools (for interactive analysis)
 
-Defined in `src/agent/tools.py` as `TOOL_DEFINITIONS` list (JSON schema) + `execute_tool()` dispatcher.
+Defined in `pattern_vault/agent/tools.py` as `TOOL_DEFINITIONS` list (JSON schema) + `execute_tool()` dispatcher.
 
 | Tool | What it does |
 |------|-------------|
@@ -291,66 +295,66 @@ This is critical for the agent's effectiveness:
 
 3. **During MCP retrieval**: `search_patterns` returns compact summaries (~150 tokens each). Full code only via explicit `get_pattern`. This keeps context lean when Claude Code queries the vault.
 
-4. **Long conversations**: Chainlit manages chat history in `cl.user_session`. Not yet implementing mid-conversation summarisation (see pending work).
+4. **Long conversations**: The React UI persists chat history under `~/.pattern-vault/chat-history/` by default. Mid-conversation summarisation is not implemented yet.
 
 ## Common development tasks
 
 **Add a new MCP tool:**
-1. Add `@mcp.tool` decorated function in `src/server/mcp_server.py`
-2. Import any needed store functions from `src/store/db.py`
+1. Add `@mcp.tool` decorated function in `pattern_vault/server/mcp_server.py`
+2. Import any needed store functions from `pattern_vault/store/db.py`
 
 **Add a new agent tool:**
-1. Add tool schema to `TOOL_DEFINITIONS` list in `src/agent/tools.py`
+1. Add tool schema to `TOOL_DEFINITIONS` list in `pattern_vault/agent/tools.py`
 2. Add handler in `execute_tool()` function in same file
 3. The orchestrator picks it up automatically
 
 **Change the extraction prompt:**
-Edit `EXTRACTION_SYSTEM_PROMPT` in `src/indexer/extractor.py`. This is the most impactful thing to tune.
+Edit `EXTRACTION_SYSTEM_PROMPT` in `pattern_vault/indexer/extractor.py`. This is the most impactful thing to tune.
 
 **Add language support:**
-Add extension → language in `LANG_MAP` and AST node types in `SYMBOL_TYPES` in `src/indexer/chunker.py`. Install grammar: `pip install tree-sitter-<language>`.
+Add extension → language in `LANG_MAP` and AST node types in `SYMBOL_TYPES` in `pattern_vault/indexer/chunker.py`. Install grammar: `pip install tree-sitter-<language>`.
 
 **Change DB schema:**
-Edit `init_db()` in `src/store/db.py`, bump `DB_VERSION`.
+Edit `init_db()` in `pattern_vault/store/db.py`, bump `DB_VERSION`.
 
 **Add a new backend provider:**
-Add a new branch in `src/client.py` in both `make_client()` and `make_async_client()`. Update `get_model()` with the provider's model ID format.
+Add a new branch in `pattern_vault/client.py` in both `make_client()` and `make_async_client()`. Update `get_model()` with the provider's model ID format.
 
 ## Testing
 
-Pytest covers the current Stage 1 regression surface around database path resolution, insert/search, chunking, dry-run indexing, and agent file-tool safety.
+Pytest covers database path resolution, insert/search, chunking, dry-run indexing, agent file-tool safety, token usage, Ollama client adaptation, and the current indexed-job persistence/filter/profile surface.
 
 ```bash
-uv run --extra dev pytest
-uv run --extra dev ruff check src tests
-python -m compileall src tests
+uv run --extra dev --extra web ruff check pattern_vault tests
+uv run --extra dev --extra web pytest
+cd web && npm run build
 ```
 
 ## Known limitations and pending work
 
 ### Critical
-- **Chainlit requires Python ≤3.13.** Python 3.14 breaks Chainlit's starlette/anyio stack. Use Python 3.11-3.13 for the UI. The CLI and MCP server work fine on 3.14.
+- **Chainlit requires Python ≤3.13.** Python 3.14 breaks Chainlit's starlette/anyio stack. The React UI is the primary UI, but use Python 3.11-3.13 if you still need Chainlit.
 
 ### Not yet implemented (priority order)
-1. **Vector embeddings + hybrid search**: `chunks.embedding` column exists but is never populated. Needs `sqlite-vec` + sentence-transformer (e.g. `all-MiniLM-L6-v2`). A `src/store/search.py` module should implement hybrid BM25 + cosine similarity with weighted merge.
+1. **Vector embeddings + hybrid search**: `chunks.embedding` column exists but is never populated. Needs `sqlite-vec` + sentence-transformer (e.g. `all-MiniLM-L6-v2`). A `pattern_vault/store/search.py` module should implement hybrid BM25 + cosine similarity with weighted merge.
 2. **Incremental reindexing**: Store file hashes in DB, skip unchanged files during re-index. Currently every file gets re-chunked on every run.
-3. **Streaming responses**: Orchestrator waits for full Claude responses. Streaming would improve Chainlit UI latency.
-4. **Parallel chunk extraction**: Batch indexer processes API calls sequentially. Use `asyncio.gather` for parallel extraction within rate limits.
-5. **Conversation summarisation**: Inject mid-conversation summary for long sessions to stay within context limits.
-6. **Broader pytest coverage**: Extend tests beyond the Stage 1 baseline to extractor parsing, MCP tools, UI helpers, schema migrations, and error paths.
+3. **Parallel chunk extraction**: Batch indexer processes API calls sequentially. Use `asyncio.gather` for parallel extraction within rate limits.
+4. **Conversation summarisation**: Inject mid-conversation summary for long sessions to stay within context limits.
+5. **Bundle optimisation**: The React build pulls many Shiki language/theme chunks. Code-split or narrow loaded languages/themes.
+6. **Broader pytest coverage**: Extend tests to MCP tools, UI helpers, schema migrations, route error paths, and extraction edge cases.
 7. **Export/import**: JSON export of vault for sharing across machines.
-8. **Pattern quality scoring**: Replace text `quality_signal` with numeric score for ranking.
-9. **UI browse mode**: Chainlit browse panel by category/tag with syntax-highlighted code.
-10. **Multi-vault support**: Per-project vaults via project-scoped `PATTERN_VAULT_DB`.
+8. **Ranking with numeric quality scores**: `quality_score` exists and profiles use it, but search ranking does not yet combine BM25 with quality score.
+9. **Multi-vault support**: Per-project vaults via project-scoped `PATTERN_VAULT_DB`.
 
 ## Dependencies
 
 ```
 Core:           anthropic, openai, mcp[cli], tree-sitter, tree-sitter-python, pydantic
-UI:             chainlit (Python ≤3.13 only)
+Search planned: sqlite-vec, sentence-transformers are installed but not wired into search yet
+React UI:       fastapi, uvicorn[standard], Node 20, Vite, React 19, TanStack Query, Zustand
+Legacy UI:      chainlit (Python ≤3.13 only)
 Bedrock:        pip install "anthropic[bedrock]"
 More languages: tree-sitter-javascript, tree-sitter-typescript, etc.
-Planned:        sqlite-vec, sentence-transformers
 ```
 
 ## 12-rule template for agents to follow
