@@ -59,6 +59,12 @@ search = [
 bedrock = [
     "anthropic[bedrock]>=0.40.0",
 ]
+docs = [
+    "mkdocs>=1.5.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.25.0",
+]
+
 
 [project.scripts]
 pv = "pattern_vault.cli:main"
