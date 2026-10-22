@@ -5,6 +5,8 @@ site_author: Arun Singh
 repo_name: arunksingh16/pattern-vault
 repo_url: https://github.com/arunksingh16/pattern-vault
 edit_uri: edit/main/docs/
+exclude_docs: |
+  superpowers/
 
 theme:
   name: material
