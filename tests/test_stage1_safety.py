@@ -11,14 +11,11 @@ from pattern_vault.store.db import (
     get_connection,
     get_pattern,
     init_db,
-    insert_insight,
     insert_pattern,
     resolve_db_path,
     search_fts,
     update_pattern,
 )
-from pattern_vault.ui import app as ui_app
-from pattern_vault.ui.app import _parse_pattern_edit_payload
 
 
 def test_resolve_db_path_prefers_explicit_then_env(monkeypatch, tmp_path):
@@ -104,68 +101,6 @@ def test_update_and_delete_pattern(tmp_path):
     assert [result["id"] for result in search_results] == [pattern_id]
     assert deleted is True
     assert missing is None
-
-
-def test_parse_pattern_edit_payload_normalizes_tags_and_rejects_unknown_fields():
-    payload = _parse_pattern_edit_payload('{"tags": "retry, backoff", "line_start": "10"}')
-
-    assert payload == {"tags": ["retry", "backoff"], "line_start": 10}
-
-    try:
-        _parse_pattern_edit_payload('{"unsupported": true}')
-    except ValueError as exc:
-        assert "Unsupported field" in str(exc)
-    else:
-        raise AssertionError("Expected unsupported field to fail")
-
-
-def test_workspace_dashboard_uses_current_vault_data(monkeypatch, tmp_path):
-    db_path = tmp_path / "patterns.db"
-    monkeypatch.setattr(ui_app, "DB_PATH", db_path)
-    monkeypatch.setattr(ui_app, "_history_path", lambda: tmp_path / "history.jsonl")
-    monkeypatch.setenv("PATTERN_VAULT_WORKSPACE_ROOTS", str(tmp_path))
-
-    conn = get_connection(db_path)
-    try:
-        init_db(conn)
-        insert_pattern(
-            conn,
-            name="Circuit breaker",
-            summary="Stops calls after repeated failures.",
-            code_text="class CircuitBreaker:\n    pass\n",
-            category="resilience",
-            language="python",
-            tags=["reliability", "failure"],
-            source_file="src/circuit.py",
-        )
-        insert_insight(
-            conn,
-            repo_path=str(tmp_path),
-            insight_text="Service boundaries are explicit and easy to scan.",
-            tags=["architecture"],
-        )
-    finally:
-        conn.close()
-
-    dashboard = ui_app._format_dashboard()
-
-    assert "Pattern Vault Workspace" in dashboard
-    assert "Circuit breaker" in dashboard
-    assert "Service boundaries are explicit" in dashboard
-    assert "resilience" in dashboard
-    assert str(db_path) in dashboard
-
-
-def test_workspace_dashboard_empty_state_is_actionable(monkeypatch, tmp_path):
-    db_path = tmp_path / "patterns.db"
-    monkeypatch.setattr(ui_app, "DB_PATH", db_path)
-    monkeypatch.setattr(ui_app, "_history_path", lambda: tmp_path / "history.jsonl")
-
-    dashboard = ui_app._format_dashboard()
-
-    assert "No saved patterns yet" in dashboard
-    assert "No repo insights saved yet" in dashboard
-    assert "Scan a repository" in dashboard
 
 
 def test_chunking_and_dry_run_index(tmp_path):

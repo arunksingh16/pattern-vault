@@ -6,7 +6,6 @@ run.sh
 .temp
 .playwright/
 .playwright-mcp/
-web/.chainlit
 .agents/
 .claude/
 .codex/
@@ -49,9 +48,6 @@ htmlcov/
 # --- IDE ---
 .vscode/settings.json
 .idea/
-
-# --- Chainlit ---
-.chainlit/translations/
 
 # --- Web frontend ---
 web/node_modules/
