@@ -39,7 +39,7 @@ def test_extract_patterns_sync_rejects_empty_content(monkeypatch, tmp_path):
         extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
     except ExtractionResponseError as exc:
         assert "no content blocks returned" in str(exc)
-        assert "anthropic/claude-sonnet" in str(exc)
+        assert "anthropic/claude-opus-5-5" in str(exc)
     else:
         raise AssertionError("Expected empty extraction content to fail")
 

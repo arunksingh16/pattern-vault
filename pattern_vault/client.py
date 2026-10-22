@@ -33,10 +33,12 @@ Usage:
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 from math import ceil
+from collections.abc import Mapping
 from typing import Any
+
+from pattern_vault import settings
 
 
 # ── Anthropic-compatible response blocks for Ollama ───────────
@@ -75,13 +77,10 @@ def _normalize_ollama_base_url(url: str) -> str:
     return f"{normalized}/v1"
 
 
-def _build_ollama_client_kwargs() -> dict[str, Any]:
-    base_url = _normalize_ollama_base_url(
-        os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434/v1")
-    )
+def _build_ollama_client_kwargs(overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
     return {
-        "base_url": base_url,
-        "api_key": os.environ.get("OLLAMA_API_KEY", "ollama"),
+        "base_url": _normalize_ollama_base_url(settings.get("ollama.base_url", overrides)),
+        "api_key": settings.get("ollama.api_key", overrides),
     }
 
 
@@ -357,29 +356,32 @@ class _AsyncOllamaCompatClient:
 # ── Backend detection ──────────────────────────────────────────
 
 
-def get_backend() -> str:
-    return os.environ.get("PATTERN_VAULT_BACKEND", "anthropic").lower()
+def get_backend(overrides: Mapping[str, Any] | None = None) -> str:
+    return str(settings.get("model.backend", overrides)).lower()
 
 
-def get_model() -> str:
-    """Return the correct model ID for the active backend."""
-    backend = get_backend()
+def get_model(overrides: Mapping[str, Any] | None = None) -> str:
+    """Return the configured model ID, or the default for the active backend."""
+    configured = settings.get("model.model", overrides)
+    if configured:
+        return configured
+    backend = get_backend(overrides)
     if backend == "bedrock":
-        return os.environ.get(
-            "PATTERN_VAULT_MODEL",
-            "anthropic.claude-sonnet-4-5-20250929-v1:0",
-        )
+        return "anthropic.claude-sonnet-4-5-20250929-v1:0"
     if backend == "ollama":
-        return os.environ.get("PATTERN_VAULT_MODEL", "qwen2.5-coder:7b")
-    return os.environ.get("PATTERN_VAULT_MODEL", "claude-sonnet-4-20250514")
+        return "qwen2.5-coder:7b"
+    return "claude-opus-5-5"
 
 
 # ── Sync clients ───────────────────────────────────────────────
 
 
-def make_client():
-    """Return a synchronous model client for the active backend."""
-    backend = get_backend()
+def make_client(overrides: Mapping[str, Any] | None = None):
+    """Return a synchronous model client for the active backend.
+
+    overrides lets Settings test unsaved form values; they win over env and config.
+    """
+    backend = get_backend(overrides)
 
     if backend == "bedrock":
         try:
@@ -389,20 +391,20 @@ def make_client():
                 "Bedrock support requires: pip install 'anthropic[bedrock]'"
             )
         return AnthropicBedrock(
-            aws_access_key=os.environ.get("AWS_ACCESS_KEY_ID"),
-            aws_secret_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
-            aws_session_token=os.environ.get("AWS_SESSION_TOKEN"),
-            aws_region=os.environ.get("AWS_REGION", "us-east-1"),
+            aws_access_key=settings.get("bedrock.access_key_id", overrides),
+            aws_secret_key=settings.get("bedrock.secret_access_key", overrides),
+            aws_session_token=settings.get("bedrock.session_token", overrides),
+            aws_region=settings.get("bedrock.region", overrides),
         )
 
     if backend == "bifrost":
         import anthropic
 
-        bifrost_url = os.environ.get("BIFROST_URL")
+        bifrost_url = settings.get("bifrost.url", overrides)
         if not bifrost_url:
             raise RuntimeError("BIFROST_URL must be set (e.g. http://localhost:8080/anthropic)")
         return anthropic.Anthropic(
-            api_key=os.environ.get("BIFROST_API_KEY", "dummy"),
+            api_key=settings.get("bifrost.api_key", overrides),
             base_url=bifrost_url,
         )
 
@@ -411,14 +413,15 @@ def make_client():
             from openai import OpenAI
         except ImportError:
             raise RuntimeError("Ollama support requires: pip install openai")
-        return _OllamaCompatClient(OpenAI(**_build_ollama_client_kwargs()))
+        return _OllamaCompatClient(OpenAI(**_build_ollama_client_kwargs(overrides)))
 
     import anthropic
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = settings.get("anthropic.api_key", overrides)
     if not api_key:
         raise RuntimeError(
-            "ANTHROPIC_API_KEY not set.\n"
+            "No Anthropic API key. Paste one in Settings, run `pattern-vault setup`,\n"
+            "or set ANTHROPIC_API_KEY.\n"
             "Alternatives:\n"
             "  Bedrock: PATTERN_VAULT_BACKEND=bedrock + AWS credentials\n"
             "  Bifrost: PATTERN_VAULT_BACKEND=bifrost + BIFROST_URL\n"
@@ -430,9 +433,9 @@ def make_client():
 # ── Async clients ──────────────────────────────────────────────
 
 
-def make_async_client():
+def make_async_client(overrides: Mapping[str, Any] | None = None):
     """Return an async model client for the active backend."""
-    backend = get_backend()
+    backend = get_backend(overrides)
 
     if backend == "bedrock":
         try:
@@ -442,20 +445,20 @@ def make_async_client():
                 "Bedrock support requires: pip install 'anthropic[bedrock]'"
             )
         return AsyncAnthropicBedrock(
-            aws_access_key=os.environ.get("AWS_ACCESS_KEY_ID"),
-            aws_secret_key=os.environ.get("AWS_SECRET_ACCESS_KEY"),
-            aws_session_token=os.environ.get("AWS_SESSION_TOKEN"),
-            aws_region=os.environ.get("AWS_REGION", "us-east-1"),
+            aws_access_key=settings.get("bedrock.access_key_id", overrides),
+            aws_secret_key=settings.get("bedrock.secret_access_key", overrides),
+            aws_session_token=settings.get("bedrock.session_token", overrides),
+            aws_region=settings.get("bedrock.region", overrides),
         )
 
     if backend == "bifrost":
         import anthropic
 
-        bifrost_url = os.environ.get("BIFROST_URL")
+        bifrost_url = settings.get("bifrost.url", overrides)
         if not bifrost_url:
             raise RuntimeError("BIFROST_URL must be set")
         return anthropic.AsyncAnthropic(
-            api_key=os.environ.get("BIFROST_API_KEY", "dummy"),
+            api_key=settings.get("bifrost.api_key", overrides),
             base_url=bifrost_url,
         )
 
@@ -464,14 +467,15 @@ def make_async_client():
             from openai import AsyncOpenAI
         except ImportError:
             raise RuntimeError("Ollama support requires: pip install openai")
-        return _AsyncOllamaCompatClient(AsyncOpenAI(**_build_ollama_client_kwargs()))
+        return _AsyncOllamaCompatClient(AsyncOpenAI(**_build_ollama_client_kwargs(overrides)))
 
     import anthropic
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = settings.get("anthropic.api_key", overrides)
     if not api_key:
         raise RuntimeError(
-            "ANTHROPIC_API_KEY not set.\n"
+            "No Anthropic API key. Paste one in Settings, run `pattern-vault setup`,\n"
+            "or set ANTHROPIC_API_KEY.\n"
             "Alternatives:\n"
             "  Bedrock: export PATTERN_VAULT_BACKEND=bedrock\n"
             "           export AWS_ACCESS_KEY_ID=...\n"
@@ -485,17 +489,17 @@ def make_async_client():
     return anthropic.AsyncAnthropic(api_key=api_key)
 
 
-def describe_backend() -> str:
+def describe_backend(overrides: Mapping[str, Any] | None = None) -> str:
     """Return a human-readable description of the active backend."""
-    backend = get_backend()
-    model = get_model()
+    backend = get_backend(overrides)
+    model = get_model(overrides)
     if backend == "bedrock":
-        region = os.environ.get("AWS_REGION", "us-east-1")
+        region = settings.get("bedrock.region", overrides)
         return f"AWS Bedrock ({region}) — {model}"
     if backend == "bifrost":
-        url = os.environ.get("BIFROST_URL", "not set")
+        url = settings.get("bifrost.url", overrides) or "not set"
         return f"Bifrost → {url} — {model}"
     if backend == "ollama":
-        url = _build_ollama_client_kwargs()["base_url"]
+        url = _build_ollama_client_kwargs(overrides)["base_url"]
         return f"Ollama → {url} — {model}"
     return f"Anthropic direct — {model}"

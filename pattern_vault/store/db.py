@@ -8,10 +8,11 @@ Uses sqlite-vec for vector search when available, falls back to FTS-only.
 import sqlite3
 import json
 import hashlib
-import os
 import time
 from pathlib import Path
 from typing import Optional
+
+from .. import settings
 
 DB_VERSION = 10
 DEFAULT_DB_PATH = Path.home() / ".pattern-vault" / "patterns.db"
@@ -25,9 +26,10 @@ def _content_hash(text: str) -> str:
 def resolve_db_path(db_path: Optional[str | Path] = None) -> Path:
     """Resolve the active vault database path.
 
-    Explicit arguments win, then PATTERN_VAULT_DB, then the default local vault.
+    Explicit arguments win, then PATTERN_VAULT_DB, then vault.db_path in the config file,
+    then the default local vault.
     """
-    raw_path = db_path or os.environ.get(DB_PATH_ENV) or DEFAULT_DB_PATH
+    raw_path = db_path or settings.get("vault.db_path")
     return Path(raw_path).expanduser()
 
 

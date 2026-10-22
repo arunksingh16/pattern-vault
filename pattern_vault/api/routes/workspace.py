@@ -12,7 +12,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from pattern_vault.agent.tools import get_workspace_roots, _tool_clone_github_repo
+from pattern_vault.agent.tools import get_allowed_roots, get_workspace_roots, _tool_clone_github_repo
 from pattern_vault.api.deps import DB_PATH
 from pattern_vault.indexer.batch import index_directory
 from pattern_vault.indexer.profiles import DEFAULT_INDEXING_PROFILE, get_indexing_profile
@@ -52,7 +52,7 @@ def _job_summary_event(job_snapshot: dict) -> dict:
 
 def _validate_workspace_dir(path: str | Path) -> Path:
     target = Path(path).expanduser().resolve()
-    roots = get_workspace_roots()
+    roots = get_allowed_roots()
 
     if not any(target == r or r in target.parents or target in r.parents for r in roots):
         raise HTTPException(status_code=403, detail="Path outside workspace roots")

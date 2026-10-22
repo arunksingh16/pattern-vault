@@ -215,7 +215,7 @@ The extraction prompt in `pattern_vault/indexer/extractor.py` classifies pattern
 | `PATTERN_VAULT_BACKEND` | No | `anthropic` | Backend: `anthropic`, `bedrock`, `bifrost`, or `ollama` |
 | `PATTERN_VAULT_DB` | No | `~/.pattern-vault/patterns.db` | SQLite database path |
 | `PATTERN_VAULT_WORKSPACE_ROOTS` | No | current working directory | `os.pathsep`-separated roots that agent file tools may scan/read |
-| `PATTERN_VAULT_MODEL` | No | auto per backend | Override model ID |
+| `PATTERN_VAULT_MODEL` | No | `claude-opus-5-5` (anthropic, bifrost), `qwen2.5-coder:7b` (ollama), Sonnet 4.5 (bedrock) | Override model ID |
 | `ANTHROPIC_API_KEY` | If backend=anthropic | — | Anthropic API key |
 | `AWS_ACCESS_KEY_ID` | If backend=bedrock | — | AWS credentials |
 | `AWS_SECRET_ACCESS_KEY` | If backend=bedrock | — | AWS credentials |
@@ -297,7 +297,7 @@ Defined in `pattern_vault/agent/tools.py` as `TOOL_DEFINITIONS` list (JSON schem
 | `save_insight(...)` | Write insight to DB |
 | `search_patterns(query, ...)` | Search existing vault |
 | `vault_stats()` | Current vault statistics |
-| `clone_github_repo(url)` | Clone a public GitHub repo into `.temp/` for analysis |
+| `clone_github_repo(url)` | Clone a public GitHub repo into `~/.pattern-vault/repos/` (`workspace.clone_dir`), which agent tools can always read |
 
 ## Context management strategy
 

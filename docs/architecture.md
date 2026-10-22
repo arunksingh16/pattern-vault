@@ -115,7 +115,7 @@ The agent is empowered with 8 core tools (configured in `pattern_vault/agent/too
 5.  `save_insight`: Store repository-wide structural highlights.
 6.  `search_patterns`: Search the existing pattern vault.
 7.  `vault_stats`: Fetch stats about indexed contents.
-8.  `clone_github_repo`: Clone a public GitHub repository into `.temp/` for analysis.
+8.  `clone_github_repo`: Clone a public GitHub repository into `~/.pattern-vault/repos/` for analysis. That folder is always readable by the agent tools, in addition to your code folders.
 
 ---
 

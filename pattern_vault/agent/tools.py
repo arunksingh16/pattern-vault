@@ -6,13 +6,13 @@ Each tool is a simple Python function that the orchestrator can call.
 """
 
 import json
-import os
 import re
 import shutil
 import subprocess  # nosec B404
 from pathlib import Path
 from typing import Optional
 
+from .. import settings
 from ..indexer.chunker import scan_directory, chunk_file, LANG_MAP
 from ..store.db import (
     get_connection,
@@ -64,23 +64,20 @@ _GITHUB_URL_RE = re.compile(
     r'^https://github\.com/([a-zA-Z0-9_.-]+)/([a-zA-Z0-9_.-]+?)(\.git)?/?$'
 )
 
-# .temp/ lives next to pattern_vault/ in the project root
-_PROJECT_ROOT = Path(__file__).parents[2]
-CLONE_BASE_DIR = _PROJECT_ROOT / ".temp"
+def get_clone_dir() -> Path:
+    """Where cloned GitHub repos live (~/.pattern-vault/repos by default)."""
+    return settings.get("workspace.clone_dir").resolve()
 
 
 def get_workspace_roots() -> list[Path]:
-    """Return configured roots that agent file tools are allowed to inspect."""
-    raw_roots = os.environ.get(WORKSPACE_ROOTS_ENV)
-    if raw_roots:
-        roots = [
-            Path(root).expanduser().resolve()
-            for root in raw_roots.split(os.pathsep)
-            if root.strip()
-        ]
-    else:
-        roots = [Path.cwd().resolve()]
-    return roots
+    """Return the user's code folders: the roots Explorer shows."""
+    roots = settings.get("workspace.roots")
+    return [root.resolve() for root in roots] if roots else [Path.cwd().resolve()]
+
+
+def get_allowed_roots() -> list[Path]:
+    """Return every root the agent file tools may read: code folders plus the clone folder."""
+    return get_workspace_roots() + [get_clone_dir()]
 
 
 def _is_under_root(path: Path, roots: list[Path]) -> bool:
@@ -102,13 +99,13 @@ def _validate_tool_path(
     extra_roots: Optional[list[Path]] = None,
 ) -> tuple[Optional[Path], Optional[str]]:
     p = Path(path).expanduser().resolve()
-    roots = get_workspace_roots() + (extra_roots or [])
+    roots = get_allowed_roots() + (extra_roots or [])
 
     if not _is_under_root(p, roots):
         root_list = ", ".join(str(root) for root in roots)
         return None, (
             f"Path is outside allowed workspace roots: {p}. "
-            f"Set {WORKSPACE_ROOTS_ENV} to allow additional roots. "
+            f"Add the folder to your code folders in Settings, or set {WORKSPACE_ROOTS_ENV}. "
             f"Configured roots: {root_list}"
         )
 
@@ -241,7 +238,7 @@ TOOL_DEFINITIONS = [
     },
     {
         "name": "clone_github_repo",
-        "description": "Clone a public GitHub repository to the local .temp/ directory for analysis. Only accepts plain https://github.com/<owner>/<repo> URLs. After cloning, use scan_directory on the returned local_path to explore the repo.",
+        "description": "Clone a public GitHub repository into the clone folder (~/.pattern-vault/repos by default) for analysis. Only accepts plain https://github.com/<owner>/<repo> URLs. After cloning, use scan_directory on the returned local_path to explore the repo.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -405,7 +402,7 @@ def _tool_vault_stats(db_path: Optional[Path] = None) -> str:
 
 
 def _tool_clone_github_repo(url: str, db_path: Optional[Path] = None) -> str:
-    """Clone a public GitHub repo to .temp/<owner>/<repo>/, register in DB."""
+    """Clone a public GitHub repo to <clone dir>/<owner>/<repo>/, register in DB."""
     match = _GITHUB_URL_RE.match(url.strip())
     if not match:
         return _json_error(
@@ -414,7 +411,7 @@ def _tool_clone_github_repo(url: str, db_path: Optional[Path] = None) -> str:
         )
 
     owner, repo = match.group(1), match.group(2)
-    dest = CLONE_BASE_DIR / owner / repo
+    dest = get_clone_dir() / owner / repo
 
     # Always re-clone: remove existing clone
     if dest.exists():
