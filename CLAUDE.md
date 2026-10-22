@@ -372,6 +372,8 @@ cd web && npm run build
 9. **Multi-vault support**: Per-project vaults via project-scoped `PATTERN_VAULT_DB`.
 10. **Grammar coverage**: Only Python, JavaScript and TypeScript/TSX have tree-sitter grammars. Other languages are split on blank lines and give the model fragments. The batch log, Explorer and Ingestion panels name those languages, but nothing fixes them yet. With `tree-sitter-cpp` installed, `llama-context.cpp` went from 837 chunks to 209.
 11. **Oversized chunks are dropped**: Chunks over `MAX_CHUNK_TOKENS` are skipped, so very large functions are never indexed. Splitting them into sub-chunks is not implemented.
+12. **MCP SDK 2.x migration**: `mcp` is pinned `<2` because 2.x renamed `FastMCP` to `MCPServer` (`from mcp.server.mcpserver import MCPServer`) and changed other APIs. Port `pattern_vault/server/mcp_server.py` before lifting the pin.
+13. **Tailwind 4 migration**: `npm audit` reports high findings in Tailwind 3's build-time dependencies (`braces`, `chokidar`, `fast-glob`, `micromatch`). They don't ship in the app. The fix is Tailwind 4, which changes the config format and design tokens.
 
 ## Dependencies
 
