@@ -43,6 +43,12 @@ export function IngestionPanel() {
     current_stage: 'queued',
   }
 
+  // Hooks must run before the no-job early return, or opening a job from the empty state crashes
+  const isComplete = job?.status === 'completed' || job?.status === 'completed_with_errors'
+  const [pipelineExpanded, setPipelineExpanded] = useState(!isComplete)
+  const [logsExpanded, setLogsExpanded] = useState(false)
+  const [discoveryExpanded, setDiscoveryExpanded] = useState(false)
+
   const statusLabel = useMemo(() => {
     if (!job) return 'Preparing'
     if (job.status === 'completed') return job.dry_run ? 'Dry Run Complete' : 'Index Complete'
@@ -108,10 +114,6 @@ export function IngestionPanel() {
   const includeLanguages = activeIndexJob.includeLanguages ?? job?.include_languages ?? []
   const includePaths = activeIndexJob.includePaths ?? job?.include_paths ?? []
   const excludePaths = activeIndexJob.excludePaths ?? job?.exclude_paths ?? []
-  const isComplete = job?.status === 'completed' || job?.status === 'completed_with_errors'
-  const [pipelineExpanded, setPipelineExpanded] = useState(!isComplete)
-  const [logsExpanded, setLogsExpanded] = useState(false)
-  const [discoveryExpanded, setDiscoveryExpanded] = useState(false)
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-3 pb-4">
@@ -166,6 +168,16 @@ export function IngestionPanel() {
       {error && (
         <div className="rounded border border-secondary/40 bg-secondary/10 px-3 py-2 text-xs text-secondary">
           {error}
+        </div>
+      )}
+
+      {stats.fallback_languages && stats.fallback_languages.length > 0 && (
+        <div className="flex items-start gap-2 rounded border border-secondary/40 bg-secondary/10 px-3 py-2 text-xs text-secondary">
+          <span className="material-symbols-outlined text-[14px] flex-shrink-0">warning</span>
+          <span>
+            No tree-sitter grammar for {stats.fallback_languages.join(', ')}. These files are split on blank lines,
+            so their patterns can be fragments instead of whole functions.
+          </span>
         </div>
       )}
 

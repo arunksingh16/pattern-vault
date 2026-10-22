@@ -123,6 +123,12 @@ SKIP_EXTENSIONS = {
 
 MAX_FILE_SIZE = 500_000  # 500KB — skip huge generated files
 
+# Grammars that live in a differently named package and expose language_<name>()
+GRAMMAR_MODULES: dict[str, str] = {
+    "typescript": "tree_sitter_typescript",
+    "tsx": "tree_sitter_typescript",
+}
+
 
 def scan_directory(root: str | Path) -> FileManifest:
     """Walk a directory and build a manifest of source files."""
@@ -227,8 +233,9 @@ def _try_load_parser(language: str):
     try:
         from tree_sitter import Language, Parser
         # Try the individual language package first
-        lang_module = importlib.import_module(f"tree_sitter_{language}")
-        lang_obj = Language(lang_module.language())
+        lang_module = importlib.import_module(GRAMMAR_MODULES.get(language, f"tree_sitter_{language}"))
+        factory = getattr(lang_module, "language", None) or getattr(lang_module, f"language_{language}")
+        lang_obj = Language(factory())
         parser = Parser(lang_obj)
         return parser, lang_obj
     except (ImportError, AttributeError, Exception):
@@ -245,13 +252,20 @@ def _try_load_parser(language: str):
     return None, None
 
 
+def ast_languages() -> list[str]:
+    """LANG_MAP languages with an installed tree-sitter grammar; the rest use blank-line chunks."""
+    return sorted(lang for lang in set(LANG_MAP.values()) if _try_load_parser(lang)[0] is not None)
+
+
 def chunk_file_treesitter(file_path: str | Path, language: str) -> list[CodeChunk]:
     """Chunk a file using tree-sitter AST parsing."""
     file_path = Path(file_path)
     source = file_path.read_bytes()
     source_text = source.decode("utf-8", errors="replace")
 
-    parser, _lang = _try_load_parser(language)
+    # .tsx needs the tsx grammar; SYMBOL_TYPES stay keyed by "typescript"
+    grammar = "tsx" if file_path.suffix == ".tsx" else language
+    parser, _lang = _try_load_parser(grammar)
     if parser is None:
         return chunk_file_simple(file_path, language)
 
@@ -266,29 +280,36 @@ def chunk_file_treesitter(file_path: str | Path, language: str) -> list[CodeChun
 def _extract_nodes(
     node, source_bytes: bytes, source_text: str,
     file_path: str, language: str, symbol_types: list[str],
-    chunks: list[CodeChunk], depth: int = 0,
+    chunks: list[CodeChunk],
 ):
-    """Recursively extract symbol nodes from the AST."""
-    if node.type in symbol_types:
-        code = source_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
-        name = _get_symbol_name(node, source_bytes)
-        symbol_type = node.type.replace("_definition", "").replace("_declaration", "").replace("_item", "")
+    """Extract symbol nodes from the AST in source order.
 
-        chunks.append(CodeChunk(
-            symbol_name=name,
-            symbol_type=symbol_type,
-            code=code,
-            file_path=file_path,
-            language=language,
-            line_start=node.start_point[0] + 1,
-            line_end=node.end_point[0] + 1,
-        ))
-        # Don't recurse deeper for nested — we capture top-level symbols
-        # and their full body (which includes nested defs)
-        return
+    Uses an explicit stack: deeply nested files (e.g. generated C headers) exceed
+    Python's recursion limit.
+    """
+    stack = [node]
+    while stack:
+        node = stack.pop()
+        if node.type in symbol_types:
+            code = source_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+            name = _get_symbol_name(node, source_bytes)
+            symbol_type = node.type.replace("_definition", "").replace("_declaration", "").replace("_item", "")
 
-    for child in node.children:
-        _extract_nodes(child, source_bytes, source_text, file_path, language, symbol_types, chunks, depth + 1)
+            chunks.append(CodeChunk(
+                symbol_name=name,
+                symbol_type=symbol_type,
+                code=code,
+                file_path=file_path,
+                language=language,
+                line_start=node.start_point[0] + 1,
+                line_end=node.end_point[0] + 1,
+            ))
+            # Don't descend into symbols — we capture top-level symbols
+            # and their full body (which includes nested defs)
+            continue
+
+        # Reversed so the first child is popped first, keeping source order
+        stack.extend(reversed(node.children))
 
 
 def chunk_file_simple(file_path: str | Path, language: str) -> list[CodeChunk]:

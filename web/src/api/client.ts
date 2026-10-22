@@ -47,6 +47,7 @@ export interface HealthStatus {
   status: string
   backend: string
   db_path: string
+  ast_languages: string[]
 }
 
 export interface ChatSession {
@@ -106,6 +107,7 @@ export interface WorkspaceIndexStats {
   patterns_found: number
   patterns_stored: number
   patterns_rejected: number
+  fallback_languages?: string[]  // missing on jobs persisted before it was added
   current_stage: string
 }
 

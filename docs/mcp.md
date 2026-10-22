@@ -81,7 +81,7 @@ When Claude connects, it automatically discovers eight powerful tools:
 | `list_tags` | `category?` | Read | List all tags currently stored in the database. |
 | `list_categories`| — | Read | List all pattern categories. |
 | `vault_stats` | — | Read | Retrieve statistics on total patterns, languages, and storage size. |
-| `reindex` | `path`, `repo_name?`, `dry_run?` | Write | Run the batch tree-sitter scanning and LLM extraction pipeline on a local path. |
+| `reindex` | `path`, `repo_name?`, `dry_run?`, `profile?` | Write | Run the batch tree-sitter scanning and LLM extraction pipeline on a local path. Skips chunks already stored as patterns (`chunks_skipped`) and chunks over 4,000 tokens (`chunks_oversized`); unchanged files are still re-chunked. |
 
 ---
 

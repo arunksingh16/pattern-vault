@@ -114,6 +114,10 @@ export function ExplorerPanel() {
     queryFn: () => api.workspace.indexJobs(8),
     refetchInterval: 5000,
   })
+  const { data: health } = useQuery({
+    queryKey: ['health'],
+    queryFn: api.health,
+  })
 
   // Clone form state
   const [cloneUrl, setCloneUrl] = useState('')
@@ -306,6 +310,11 @@ export function ExplorerPanel() {
         <p className="text-[11px] text-on-surface-variant font-mono">
           Optional pre-index filters use comma-separated values. Path filters match repo-relative glob patterns.
         </p>
+        {health?.ast_languages && (
+          <p className="text-[11px] text-on-surface-variant font-mono">
+            Function-level chunking: {health.ast_languages.join(', ')}. Other languages are split on blank lines; a dry run shows which ones a repo uses.
+          </p>
+        )}
         <form onSubmit={handleClone} className="flex gap-2">
           <input
             type="text"
@@ -454,6 +463,14 @@ export function ExplorerPanel() {
                       {job.exclude_paths.length > 0 && (
                         <span className="rounded bg-secondary/15 px-2 py-0.5 text-[10px] uppercase text-secondary">
                           exclude {formatFilterPreview(job.exclude_paths)}
+                        </span>
+                      )}
+                      {job.stats.fallback_languages && job.stats.fallback_languages.length > 0 && (
+                        <span
+                          className="rounded bg-secondary/15 px-2 py-0.5 text-[10px] uppercase text-secondary"
+                          title="No tree-sitter grammar: these files are split on blank lines"
+                        >
+                          blank-line {formatFilterPreview(job.stats.fallback_languages)}
                         </span>
                       )}
                     </div>

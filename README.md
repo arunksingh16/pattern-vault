@@ -287,10 +287,11 @@ MCP tools:
 
 1. Scan a repository and skip dependency/build/cache folders.
 2. Apply optional language and path filters.
-3. Chunk files with tree-sitter where a grammar is available.
-4. Send small batches of chunks to the configured model backend.
-5. Keep only chunks classified as reusable patterns for the selected profile.
-6. Store patterns in SQLite and update the FTS5 index.
+3. Chunk files with tree-sitter where a grammar is available. Other languages are split on blank lines, and the log names them.
+4. Skip chunks over 4,000 tokens (about 16,000 characters) so one generated function can't fill the model's context.
+5. Send small batches of chunks to the configured model backend.
+6. Keep only chunks classified as reusable patterns for the selected profile.
+7. Store patterns in SQLite and update the FTS5 index.
 
 Default database path:
 
@@ -321,7 +322,7 @@ export PATTERN_VAULT_DB=/path/to/patterns.db
 | `BIFROST_API_KEY` | `dummy` | Bifrost virtual key |
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
 | `OLLAMA_API_KEY` | `ollama` | Dummy key for OpenAI-compatible client |
-| `PATTERN_VAULT_HISTORY_DIR` | `~/.pattern-vault/chat-history` | Chat history directory |
+| `PATTERN_VAULT_HISTORY_DIR` | `~/.pattern-vault/chat-history` | Chat history directory for the legacy Chainlit UI (the React UI stores chat in SQLite) |
 | `PATTERN_VAULT_MCP_MONITOR_HOST` | `127.0.0.1` | Host for the dashboard-managed HTTP MCP server |
 | `PATTERN_VAULT_MCP_MONITOR_PORT` | `8002` | Port for the dashboard-managed HTTP MCP server |
 | `PATTERN_VAULT_MCP_URL` | none | Optional HTTP MCP status URL for the legacy Chainlit UI |
@@ -370,7 +371,10 @@ pip install "pattern-vault[bedrock]"    # Anthropic Bedrock extra dependencies
 Bluntly: this is useful, but it is still early.
 
 - Search is FTS5/BM25 only. Embeddings and hybrid semantic search are not wired yet.
-- Reindexing is not incremental. Dedup prevents duplicate storage, but unchanged files can still consume model calls.
+- Search only covers model-written metadata (name, summary, tags, category, language, notes), not the code itself.
+- Reindexing is not incremental. Chunks already stored as patterns are skipped, but every file is re-chunked and chunks the model rejected before are sent again, which costs model calls.
+- Tree-sitter grammars ship for Python, JavaScript and TypeScript only. Other languages are split on blank lines, which gives the model weaker chunks. The index log and the Explorer and Ingestion panels name the affected languages; adding more grammars is future work.
+- Chunks over 4,000 tokens are skipped rather than split, so very large functions are never indexed. The count is reported as `chunks_oversized`.
 - Extraction is mostly sequential. Large repositories can be slow and expensive.
 - The React build currently pulls many Shiki language/theme chunks; production bundle optimization is needed.
 - The legacy Chainlit UI still exists, but the React dashboard is the direction of travel.
@@ -397,7 +401,6 @@ web/
 tests/                 Backend regression tests
 .github/workflows/     CI
 CLAUDE.md              Developer-oriented project map
-HANDOFF.md             UI redesign handoff notes
 ```
 
 ## License

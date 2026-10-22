@@ -2,7 +2,8 @@
 Pattern Vault — Batch indexer.
 
 Orchestrates: scan directory → chunk files → extract patterns via Claude → store.
-Processes incrementally (skips unchanged files via content hash).
+Every file is re-chunked on each run. Chunks whose content hash is already stored
+as a pattern are skipped; chunks the model previously rejected are sent again.
 """
 
 import hashlib
@@ -12,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
-from ..indexer.chunker import CodeChunk, chunk_file, filter_manifest, scan_directory
+from ..indexer.chunker import CodeChunk, ast_languages, chunk_file, filter_manifest, scan_directory
 from ..indexer.extractor import extract_patterns_sync
 from ..indexer.profiles import DEFAULT_INDEXING_PROFILE, get_indexing_profile
 from ..store.db import get_connection, init_db, insert_pattern
@@ -21,7 +22,9 @@ from ..store.db import get_connection, init_db, insert_pattern
 @dataclass
 class IndexStats:
     files_scanned: int = 0
-    files_skipped: int = 0
+    files_skipped: int = 0  # dropped by the scanner or filters
+    chunks_skipped: int = 0  # already stored as a pattern
+    chunks_oversized: int = 0  # over MAX_CHUNK_TOKENS, never sent to the model
     chunks_extracted: int = 0
     patterns_found: int = 0
     patterns_stored: int = 0
@@ -34,6 +37,7 @@ class IndexStats:
 
 
 BATCH_SIZE = 5  # chunks per Claude API call
+MAX_CHUNK_TOKENS = 4_000  # larger chunks are skipped, not trimmed (tokens ≈ chars / 4)
 EXTRACTION_MAX_ATTEMPTS = 3
 EXTRACTION_BACKOFF_SECONDS = 1.0
 
@@ -87,8 +91,15 @@ def index_directory(
         include_paths=include_paths,
         exclude_paths=exclude_paths,
     )
+    stats.files_skipped = manifest.skipped
     log(f"Found {manifest.total_files} files ({manifest.skipped} skipped)")
     log(f"Languages: {json.dumps(manifest.languages)}")
+    fallback_languages = sorted(set(manifest.languages) - set(ast_languages()))
+    if fallback_languages:
+        log(
+            f"No tree-sitter grammar for {', '.join(fallback_languages)}; "
+            "these files are split on blank lines."
+        )
     if include_languages:
         log(f"Language filter: {json.dumps(include_languages)}")
     if include_paths:
@@ -118,7 +129,10 @@ def index_directory(
                     "SELECT id FROM patterns WHERE content_hash = ?", (chash,)
                 ).fetchone()
                 if existing:
-                    stats.files_skipped += 1
+                    stats.chunks_skipped += 1
+                    continue
+                if len(chunk.code) > MAX_CHUNK_TOKENS * 4:
+                    stats.chunks_oversized += 1
                     continue
 
                 all_chunks.append((file_info, chunk))
@@ -127,6 +141,8 @@ def index_directory(
             stats.errors.append(f"Error chunking {file_info['relative']}: {e}")
 
     log(f"Extracted {stats.chunks_extracted} chunks from {stats.files_scanned} files")
+    if stats.chunks_oversized:
+        log(f"Skipped {stats.chunks_oversized} chunks over {MAX_CHUNK_TOKENS} tokens.")
 
     if dry_run:
         log("Dry run — skipping extraction and storage.")
@@ -228,6 +244,7 @@ def index_directory(
                     language=chunk.language,
                     tags=result.tags,
                     quality_signal=result.quality_signal,
+                    quality_score=result.quality_score,
                     source_repo=repo_name,
                     source_file=file_info["relative"],
                     line_start=chunk.line_start,

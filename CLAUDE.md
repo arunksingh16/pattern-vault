@@ -22,7 +22,7 @@ A personal code pattern knowledge base. Point it at any repo, it extracts reusab
 │  │ Claude tool-use loop — Claude decides tool call sequence    │    │
 │  │ Tools: scan_directory, read_file, parse_symbols,            │    │
 │  │        save_pattern, save_insight, search_patterns,         │    │
-│  │        vault_stats                                          │    │
+│  │        vault_stats, clone_github_repo                       │    │
 │  └──────────────────────────┬──────────────────────────────────┘    │
 │                             │                                       │
 ├─────────────────────────────┼───────────────────────────────────────┤
@@ -59,7 +59,7 @@ pattern-vault/
 ├── pyproject.toml              # project metadata + dependencies
 ├── CLAUDE.md                   # ← you are here
 ├── README.md                   # user-facing docs
-├── HANDOFF.md                  # Agent handoff document for UI redesign progress
+├── HANDOFF.md                  # Agent handoff: current state + ordered work plan
 ├── .mcp.json                   # MCP config for Claude Code
 ├── .gitignore
 ├── .chainlit/
@@ -75,10 +75,11 @@ pattern-vault/
 │   │   ├── __init__.py
 │   │   ├── chunker.py          # ★ Tree-sitter AST parsing, file scanning, LANG_MAP
 │   │   ├── extractor.py        # ★ Claude extraction prompt + sync/async API calls
+│   │   ├── profiles.py         # curated/balanced/comprehensive quality gates + budgets
 │   │   └── batch.py            # Batch pipeline: scan → chunk → extract → store
 │   ├── agent/
 │   │   ├── __init__.py
-│   │   ├── tools.py            # ★ 7 tool definitions + implementations for agentic loop
+│   │   ├── tools.py            # ★ 8 tool definitions + implementations for agentic loop
 │   │   └── orchestrator.py     # ★ Claude tool-use loop (sync + async generators)
 │   ├── server/
 │   │   ├── __init__.py
@@ -118,7 +119,7 @@ pattern-vault/
         │   ├── uiStore.ts      # Zustand: active view, sidebar, selection
         │   └── chatStore.ts    # ★ Zustand: messages, streaming, tool calls
         ├── components/         # GlassPanel, SideNav, SearchBar, CodeBlock, Chip, ToolStep
-        ├── panels/             # Vault, Explorer, Ingestion, Chat, MCP, Usage, Insights
+        ├── panels/             # Vault, PatternBrowser/Inspector, Explorer, Ingestion, Chat, History, MCP, Usage, Insights, Settings
         └── layouts/PanelGrid.tsx  # CSS Grid multi-pane layout
 ```
 
@@ -126,7 +127,7 @@ Files marked ★ are the core files you'll modify most.
 
 ## How the agentic loop works
 
-This is the most important thing to understand. The agent does NOT use a fixed pipeline. It gives Claude 7 tools and lets Claude decide the sequence based on the user's question.
+This is the most important thing to understand. The agent does NOT use a fixed pipeline. It gives Claude 8 tools and lets Claude decide the sequence based on the user's question.
 
 Example flow when user says "Scan this repo and find interesting patterns":
 
@@ -174,8 +175,8 @@ Override: `PATTERN_VAULT_DB=/path/to/db.db`
 
 ```sql
 patterns (id, name, category, language, tags JSON, summary, quality_signal,
-          source_repo, source_file, line_start, line_end, content_hash,
-          created_at, updated_at)
+          quality_score, source_repo, source_file, line_start, line_end,
+          content_hash, user_notes, source_url, created_at, updated_at)
 
 chunks (id, pattern_id FK, code_text, chunk_type, embedding BLOB)
 
@@ -185,12 +186,20 @@ token_usage_events (id, provider, model, flow, operation, input_tokens,
                     output_tokens, total_tokens, estimated, usage_json,
                     session_id, job_id, created_at)
 
-patterns_fts — FTS5 virtual table over (name, summary, tags, category, language)
-               with porter+unicode61 tokenizer, BM25 ranking
+patterns_fts — FTS5 virtual table over (name, summary, tags, category, language, user_notes)
+               with porter+unicode61 tokenizer, BM25 ranking, query terms OR-ed
                kept in sync via INSERT/DELETE/UPDATE triggers
+               code text is NOT indexed — search only sees model-written metadata
+
+chat_sessions, chat_messages   — React UI chat history
+cloned_repos                   — GitHub repos cloned for indexing
+index_jobs, index_job_events   — dashboard ingestion jobs + replayable logs
+db_meta                        — schema version
 ```
 
 Dedup: `content_hash` = sha256(code_text)[:16]. Same code → same pattern ID returned.
+
+`quality_score` (0.0–1.0) comes from the extractor. Profiles use it as a storage gate, and batch indexing stores it on the pattern. Manually added patterns and patterns indexed before v10 have `NULL`.
 
 ## Pattern categories
 
@@ -269,7 +278,7 @@ uv run pv serve --transport http --port 8002                    # MCP server (HT
 | `list_tags(category?)` | Read | All tags, optionally filtered |
 | `list_categories()` | Read | All categories |
 | `vault_stats()` | Read | Pattern/chunk/insight counts, languages |
-| `reindex(path, repo_name?, dry_run?)` | Write | Run full batch indexing pipeline |
+| `reindex(path, repo_name?, dry_run?, profile?)` | Write | Run full batch indexing pipeline |
 
 ## Agent tools (for interactive analysis)
 
@@ -284,18 +293,19 @@ Defined in `pattern_vault/agent/tools.py` as `TOOL_DEFINITIONS` list (JSON schem
 | `save_insight(...)` | Write insight to DB |
 | `search_patterns(query, ...)` | Search existing vault |
 | `vault_stats()` | Current vault statistics |
+| `clone_github_repo(url)` | Clone a public GitHub repo into `.temp/` for analysis |
 
 ## Context management strategy
 
 This is critical for the agent's effectiveness:
 
-1. **During batch indexing**: Tree-sitter chunks files at the symbol level BEFORE Claude sees them. A 10K-line file becomes ~50 individual function chunks. Each Claude API call gets 3-5 small chunks (BATCH_SIZE=5 in batch.py). Sonnet is used for cost/speed.
+1. **During batch indexing**: Tree-sitter chunks files at the symbol level BEFORE Claude sees them. A 10K-line file becomes ~50 individual function chunks. Each Claude API call gets 3-5 small chunks (BATCH_SIZE=5 in batch.py). Chunks over `MAX_CHUNK_TOKENS` (4,000; tokens ≈ chars / 4) are skipped, not trimmed, and counted in `IndexStats.chunks_oversized`. Sonnet is used for cost/speed.
 
 2. **During interactive analysis**: Tool-driven progressive loading. Claude starts with the directory tree (~200 tokens), reads specific files on demand, parses ASTs only for interesting files. A typical turn uses <10K tokens of tool results.
 
 3. **During MCP retrieval**: `search_patterns` returns compact summaries (~150 tokens each). Full code only via explicit `get_pattern`. This keeps context lean when Claude Code queries the vault.
 
-4. **Long conversations**: The React UI persists chat history under `~/.pattern-vault/chat-history/` by default. Mid-conversation summarisation is not implemented yet.
+4. **Long conversations**: The React UI persists chat history in SQLite (`chat_sessions`, `chat_messages`). The legacy Chainlit UI writes JSONL under `~/.pattern-vault/chat-history/` (`PATTERN_VAULT_HISTORY_DIR`). Mid-conversation summarisation is not implemented yet.
 
 ## Common development tasks
 
@@ -312,7 +322,7 @@ This is critical for the agent's effectiveness:
 Edit `EXTRACTION_SYSTEM_PROMPT` in `pattern_vault/indexer/extractor.py`. This is the most impactful thing to tune.
 
 **Add language support:**
-Add extension → language in `LANG_MAP` and AST node types in `SYMBOL_TYPES` in `pattern_vault/indexer/chunker.py`. Install grammar: `pip install tree-sitter-<language>`.
+Add extension → language in `LANG_MAP` and AST node types in `SYMBOL_TYPES` in `pattern_vault/indexer/chunker.py`. Install grammar: `pip install tree-sitter-<language>`. If the package exposes `language_<name>()` instead of `language()` (like `tree-sitter-typescript`), add it to `GRAMMAR_MODULES`. Only Python, JavaScript and TypeScript/TSX grammars are installed today; every other `LANG_MAP` language falls back to blank-line chunks. `ast_languages()` in `chunker.py` reports which grammars load. `/api/health` returns that list as `ast_languages`, the batch log names a repo's fallback languages, and the workspace job stores them in `stats.fallback_languages` for the Explorer and Ingestion warnings.
 
 **Change DB schema:**
 Edit `init_db()` in `pattern_vault/store/db.py`, bump `DB_VERSION`.
@@ -322,7 +332,7 @@ Add a new branch in `pattern_vault/client.py` in both `make_client()` and `make_
 
 ## Testing
 
-Pytest covers database path resolution, insert/search, chunking, dry-run indexing, agent file-tool safety, token usage, Ollama client adaptation, and the current indexed-job persistence/filter/profile surface.
+Pytest covers database path resolution, insert/search, chunking (including deeply nested files), the oversized-chunk gate, grammar fallback reporting, dry-run indexing, agent file-tool safety, token usage, Ollama client adaptation, and the current indexed-job persistence/filter/profile surface.
 
 ```bash
 uv run --extra dev --extra web ruff check pattern_vault tests
@@ -337,14 +347,16 @@ cd web && npm run build
 
 ### Not yet implemented (priority order)
 1. **Vector embeddings + hybrid search**: `chunks.embedding` column exists but is never populated. Needs `sqlite-vec` + sentence-transformer (e.g. `all-MiniLM-L6-v2`). A `pattern_vault/store/search.py` module should implement hybrid BM25 + cosine similarity with weighted merge.
-2. **Incremental reindexing**: Store file hashes in DB, skip unchanged files during re-index. Currently every file gets re-chunked on every run.
+2. **Incremental reindexing**: Store file hashes in DB, skip unchanged files during re-index. Currently every file gets re-chunked on every run, and only chunks already stored as patterns are skipped (`IndexStats.chunks_skipped`) — chunks the model rejected are sent again, which costs model calls.
 3. **Parallel chunk extraction**: Batch indexer processes API calls sequentially. Use `asyncio.gather` for parallel extraction within rate limits.
 4. **Conversation summarisation**: Inject mid-conversation summary for long sessions to stay within context limits.
 5. **Bundle optimisation**: The React build pulls many Shiki language/theme chunks. Code-split or narrow loaded languages/themes.
 6. **Broader pytest coverage**: Extend tests to MCP tools, UI helpers, schema migrations, route error paths, and extraction edge cases.
 7. **Export/import**: JSON export of vault for sharing across machines.
-8. **Ranking with numeric quality scores**: `quality_score` exists and profiles use it, but search ranking does not yet combine BM25 with quality score.
+8. **Ranking with numeric quality scores**: `quality_score` is stored (schema v10) and returned by MCP `search_patterns`, but search ranking does not yet combine it with BM25.
 9. **Multi-vault support**: Per-project vaults via project-scoped `PATTERN_VAULT_DB`.
+10. **Grammar coverage**: Only Python, JavaScript and TypeScript/TSX have tree-sitter grammars. Other languages are split on blank lines and give the model fragments. The batch log, Explorer and Ingestion panels name those languages, but nothing fixes them yet. With `tree-sitter-cpp` installed, `llama-context.cpp` went from 837 chunks to 209.
+11. **Oversized chunks are dropped**: Chunks over `MAX_CHUNK_TOKENS` are skipped, so very large functions are never indexed. Splitting them into sub-chunks is not implemented.
 
 ## Dependencies
 

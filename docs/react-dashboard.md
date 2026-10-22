@@ -39,6 +39,7 @@ Run and track indexing jobs:
 -   **Trigger Ingestion**: Input a local workspace path, specify path exclusions, choose a profile (`curated`, `balanced`, `comprehensive`), and launch a batch indexing job.
 -   **Job History**: View list of all past ingestion jobs with statuses (running, completed, failed) and execution timestamps.
 -   **Stream Log Console**: Click a job to view real-time, replayable step-by-step logs of the chunker and LLM extraction process.
+-   **Grammar Warning**: When a repo contains languages with no tree-sitter grammar, the job shows a warning, and Explorer's recent jobs show a `blank-line` chip naming them. Those files are split on blank lines, so their patterns can be fragments. Explorer also lists the languages that get function-level chunking. Run a dry run to see which languages a repo uses.
 
 <p align="center">
   <img src="../assets/pattern_indexer_running.png" alt="Ingestion Panel — Live Scan" width="100%" style="border-radius: 8px; border: 1px solid #333;" />

@@ -37,6 +37,7 @@ _EXTRACTED_RE = re.compile(r"^Extracted (\d+) chunks from (\d+) files$")
 _BATCH_RE = re.compile(r"^Extracting patterns from chunks (\d+)-(\d+)\.\.\.$")
 _STORED_RE = re.compile(r"^Stored: \[([^\]]+)\] (.+)$")
 _DONE_RE = re.compile(r"^Done\. Found (\d+) patterns, stored (\d+)\.$")
+_FALLBACK_RE = re.compile(r"^No tree-sitter grammar for (.+); these files are split on blank lines\.$")
 TERMINAL_INDEX_STATUSES = {"completed", "completed_with_errors", "failed"}
 
 
@@ -121,6 +122,7 @@ class WorkspaceIndexJob:
             "patterns_found": 0,
             "patterns_stored": 0,
             "patterns_rejected": 0,
+            "fallback_languages": [],
             "current_stage": "queued",
         }
         self.error: str | None = None
@@ -182,6 +184,8 @@ class WorkspaceIndexJob:
         elif match := _FOUND_RE.match(clean_line):
             self.stats["files_discovered"] = int(match.group(1))
             self.stats["files_skipped"] = int(match.group(2))
+        elif match := _FALLBACK_RE.match(clean_line):
+            self.stats["fallback_languages"] = match.group(1).split(", ")
         elif match := _EXTRACTED_RE.match(clean_line):
             self.stats["chunks_extracted"] = int(match.group(1))
             self.stats["files_scanned"] = int(match.group(2))

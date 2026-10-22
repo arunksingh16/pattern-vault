@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-DB_VERSION = 9
+DB_VERSION = 10
 DEFAULT_DB_PATH = Path.home() / ".pattern-vault" / "patterns.db"
 DB_PATH_ENV = "PATTERN_VAULT_DB"
 
@@ -54,6 +54,7 @@ def init_db(conn: sqlite3.Connection) -> None:
             tags TEXT NOT NULL DEFAULT '[]',
             summary TEXT NOT NULL,
             quality_signal TEXT DEFAULT NULL,
+            quality_score REAL DEFAULT NULL,
             source_repo TEXT DEFAULT NULL,
             source_file TEXT DEFAULT NULL,
             line_start INTEGER DEFAULT NULL,
@@ -212,6 +213,9 @@ def init_db(conn: sqlite3.Connection) -> None:
     if stored_version < 9:
         _migrate_to_v9(conn)
 
+    if stored_version < 10:
+        _migrate_to_v10(conn)
+
     conn.execute(
         "INSERT OR REPLACE INTO db_meta (key, value) VALUES ('version', ?)",
         (str(DB_VERSION),),
@@ -344,6 +348,14 @@ def _migrate_to_v9(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _migrate_to_v10(conn: sqlite3.Connection) -> None:
+    """Migrate DB from v9 → v10: persist the extractor's quality_score on patterns."""
+    cols = [row[1] for row in conn.execute("PRAGMA table_info(patterns)").fetchall()]
+    if "quality_score" not in cols:
+        conn.execute("ALTER TABLE patterns ADD COLUMN quality_score REAL DEFAULT NULL")
+    conn.commit()
+
+
 def _migrate_to_v4(conn: sqlite3.Connection) -> None:
     """Migrate DB from v3 → v4: add source_url to patterns + cloned_repos table."""
     cols = [row[1] for row in conn.execute("PRAGMA table_info(patterns)").fetchall()]
@@ -406,6 +418,7 @@ def insert_pattern(
     chunk_type: str = "implementation",
     embedding: Optional[bytes] = None,
     source_url: Optional[str] = None,
+    quality_score: Optional[float] = None,
 ) -> int:
     """Insert a pattern and its code chunk. Returns the pattern ID."""
     now = time.time()
@@ -421,12 +434,12 @@ def insert_pattern(
 
     cursor = conn.execute(
         """INSERT INTO patterns
-           (name, category, language, tags, summary, quality_signal,
+           (name, category, language, tags, summary, quality_signal, quality_score,
             source_repo, source_file, line_start, line_end,
             content_hash, source_url, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
-            name, category, language, tags_json, summary, quality_signal,
+            name, category, language, tags_json, summary, quality_signal, quality_score,
             source_repo, source_file, line_start, line_end,
             chash, source_url, now, now,
         ),

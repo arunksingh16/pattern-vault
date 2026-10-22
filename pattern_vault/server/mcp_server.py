@@ -3,7 +3,7 @@ Pattern Vault — MCP Server.
 
 Exposes the pattern store as MCP tools for Claude Code and claude.ai.
 Tools: search_patterns, get_pattern, add_pattern, save_insight,
-       list_tags, list_categories, get_stats, reindex.
+       list_tags, list_categories, vault_stats, reindex.
 """
 
 import json
@@ -89,6 +89,7 @@ async def search_patterns(
                 "language": r["language"],
                 "tags": r["tags"],
                 "summary": r["summary"],
+                "quality_score": r.get("quality_score"),
                 "source_file": r.get("source_file"),
             })
         if not compact:
@@ -331,7 +332,8 @@ async def reindex(
     """Scan a directory, extract code patterns using Claude, and store them.
 
     This runs the full indexing pipeline: scan → chunk (tree-sitter) → extract (Claude) → store.
-    Skips files whose content hasn't changed since last index.
+    Skips chunks already stored as patterns. Unchanged files are still re-chunked, and
+    chunks rejected on a previous run are sent to the model again.
 
     Args:
         path: Absolute path to the directory to index
@@ -357,6 +359,8 @@ async def reindex(
     return json.dumps({
         "files_scanned": stats.files_scanned,
         "files_skipped": stats.files_skipped,
+        "chunks_skipped": stats.chunks_skipped,
+        "chunks_oversized": stats.chunks_oversized,
         "chunks_extracted": stats.chunks_extracted,
         "patterns_found": stats.patterns_found,
         "patterns_stored": stats.patterns_stored,

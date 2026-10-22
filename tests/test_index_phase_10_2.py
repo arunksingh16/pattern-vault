@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from pattern_vault.api.routes import workspace
 from pattern_vault.indexer import batch as batch_module
+from pattern_vault.indexer import chunker
 from pattern_vault.indexer.batch import index_directory
 from pattern_vault.indexer.extractor import (
     ExtractionResponseError,
@@ -11,6 +12,7 @@ from pattern_vault.indexer.extractor import (
     extract_patterns_sync,
 )
 from pattern_vault.indexer.profiles import INDEXING_PROFILES, IndexingProfile
+from pattern_vault.server import mcp_server
 from pattern_vault.store.db import get_connection, get_index_job, init_db
 
 
@@ -223,6 +225,146 @@ def test_index_directory_filters_manifest_before_chunking(tmp_path):
 
     assert stats.files_scanned == 1
     assert stats.chunks_extracted == 1
+
+
+def test_index_directory_reindex_skips_stored_chunks_not_files(monkeypatch, tmp_path):
+    # files_skipped must mean files the scanner dropped; the dashboard shows it as such
+    # during a job, so the final stats must not overwrite it with a chunk count.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "service.py").write_text(
+        "def useful_retry(value):\n"
+        "    if not value:\n"
+        "        return 'fallback'\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    (repo / "notes.txt").write_text("not source\n", encoding="utf-8")
+    db_path = tmp_path / "patterns.db"
+    extracted_batches = []
+
+    def fake_extract(chunks, **_kwargs):
+        extracted_batches.append(chunks)
+        return [
+            ExtractionResult(
+                chunk_index=0,
+                is_pattern=True,
+                name="Retry fallback",
+                category="resilience",
+                quality_score=0.95,
+            )
+        ]
+
+    monkeypatch.setattr(batch_module, "extract_patterns_sync", fake_extract)
+
+    first = index_directory(repo, db_path=db_path)
+    second = index_directory(repo, db_path=db_path)
+
+    assert first.patterns_stored == 1
+    # A chunk already stored as a pattern is not sent to the model again.
+    assert len(extracted_batches) == 1
+    assert second.chunks_skipped == 1
+    assert second.chunks_extracted == 0
+    assert first.files_skipped == second.files_skipped == 1
+
+
+def test_index_directory_stores_quality_score_for_search(monkeypatch, tmp_path):
+    # The score is the only numeric quality signal we get from the model; it must
+    # survive storage so search can rank by it and agents can see it.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "service.py").write_text(
+        "def useful_retry(value):\n"
+        "    if not value:\n"
+        "        return 'fallback'\n"
+        "    return value\n",
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "patterns.db"
+    monkeypatch.setattr(
+        batch_module,
+        "extract_patterns_sync",
+        lambda *_args, **_kwargs: [
+            ExtractionResult(
+                chunk_index=0,
+                is_pattern=True,
+                name="Retry fallback",
+                category="resilience",
+                summary="Retry with a fallback value",
+                quality_score=0.9,
+            )
+        ],
+    )
+    monkeypatch.setattr(mcp_server, "DB_PATH", db_path)
+
+    index_directory(repo, db_path=db_path)
+    results = json.loads(asyncio.run(mcp_server.search_patterns("retry")))["results"]
+
+    assert results[0]["quality_score"] == 0.9
+
+
+def test_index_directory_never_sends_oversized_chunk_to_extractor(monkeypatch, tmp_path):
+    # One ~50k-token function would overflow a small model's context and spend the
+    # whole batch on code too big to reuse; it must be dropped before extraction.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "service.py").write_text(
+        "def useful_retry(value):\n"
+        "    if not value:\n"
+        "        return 'fallback'\n"
+        "    return value\n"
+        "\n"
+        "\n"
+        "def generated_table():\n" + "    x = 1\n" * 20_000,
+        encoding="utf-8",
+    )
+    sent_symbols = []
+
+    def fake_extract(chunks, **_kwargs):
+        sent_symbols.extend(chunk["symbol_name"] for chunk in chunks)
+        return []
+
+    monkeypatch.setattr(batch_module, "extract_patterns_sync", fake_extract)
+
+    stats = index_directory(repo, db_path=tmp_path / "patterns.db")
+    dry_stats = index_directory(repo, db_path=tmp_path / "patterns.db", dry_run=True)
+
+    assert sent_symbols == ["useful_retry"]
+    assert stats.chunks_oversized == 1
+    assert stats.chunks_extracted == 1
+    # A dry run must show the same count, so users see it before paying for a run.
+    assert dry_stats.chunks_oversized == 1
+
+
+def test_workspace_job_reports_languages_without_ast_grammar(monkeypatch, tmp_path):
+    # The Ingestion panel warns from this list: files in these languages are split on
+    # blank lines, so their patterns can be fragments instead of whole functions.
+    monkeypatch.setitem(chunker.GRAMMAR_MODULES, "go", "tree_sitter_not_installed")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "main.go").write_text("package main\n\nfunc main() {\n\tprintln(1)\n}\n", encoding="utf-8")
+    (repo / "service.py").write_text("def handler():\n    return 1\n", encoding="utf-8")
+    db_path = tmp_path / "patterns.db"
+    monkeypatch.setattr(workspace, "DB_PATH", db_path)
+
+    async def run_job():
+        manager = workspace.WorkspaceIndexManager()
+        job = await manager.create_job(repo, "repo", "path", "repo", True, "curated")
+        await job.task
+        return job
+
+    job = asyncio.run(run_job())
+
+    conn = get_connection(db_path)
+    try:
+        init_db(conn)
+        record = get_index_job(conn, job.job_id)
+    finally:
+        conn.close()
+
+    assert job.stats["fallback_languages"] == ["go"]
+    # Persisted, so the warning survives a page refresh and job replay.
+    assert record["stats"]["fallback_languages"] == ["go"]
 
 
 def test_index_directory_profile_budget_stops_after_limit(monkeypatch, tmp_path):

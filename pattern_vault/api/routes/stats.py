@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 
 from pattern_vault.api.deps import DB_PATH, get_db
 from pattern_vault.client import describe_backend
+from pattern_vault.indexer.chunker import ast_languages
 from pattern_vault.store.db import get_stats, list_categories, list_tags
 
 router = APIRouter(tags=["stats"])
@@ -22,6 +23,7 @@ def health():
         "status": "ok",
         "backend": backend,
         "db_path": str(DB_PATH),
+        "ast_languages": ast_languages(),
     }
 
 

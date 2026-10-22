@@ -54,12 +54,14 @@ The batch indexing pipeline ingest folders cleanly and efficiently in four disti
 The scanner (`pattern_vault/indexer/chunker.py`) traverses the target path. It applies a series of smart ignore patterns:
 -   **Dependencies/Caches**: Ignores `.git`, `node_modules`, `venv`, `.venv`, `__pycache__`, `.pytest_cache`, and similar directories.
 -   **Binary & Config Files**: Skips image formats, massive lockfiles (`package-lock.json`, `uv.lock`), and binary files.
--   **File Mapping**: Categorizes files by language using an internal `LANG_MAP` (supporting Python, JavaScript, TypeScript, and Go).
+-   **File Mapping**: Categorizes files by language using an internal `LANG_MAP` (Python, JavaScript, TypeScript, Go, Rust, Java, C/C++, C#, Ruby, Swift, Kotlin, PHP, Bash). Tree-sitter grammars ship for Python, JavaScript and TypeScript/TSX only.
 
 ### Phase B: Tree-Sitter AST Chunking
 Instead of splitting text files arbitrarily by character count (which breaks code context!), Pattern Vault uses **tree-sitter AST parsers**:
 -   It breaks down source code into functional syntactic blocks, such as **classes**, **functions**, and **methods**.
--   If a language doesn't have an active tree-sitter grammar, the chunker falls back to logical line-based chunk boundaries.
+-   If a language doesn't have an active tree-sitter grammar, the chunker falls back to blank-line chunk boundaries. The batch log names those languages, `/api/health` lists the languages that do have a grammar (`ast_languages`), and the Explorer and Ingestion panels warn about the rest. This is a known limitation.
+-   The AST walk uses an explicit stack, so deeply nested files (such as generated C headers) don't hit Python's recursion limit.
+-   Chunks over `MAX_CHUNK_TOKENS` (4,000 tokens, estimated as characters / 4) are skipped before extraction and counted as `chunks_oversized`. Dry runs report the same count.
 -   This ensures the LLM receives complete, syntactically coherent modules of code to analyze.
 
 ### Phase C: Model Pattern Extraction
@@ -69,12 +71,12 @@ The raw code chunks are batched (`BATCH_SIZE=5`) and sent to the Extractor (`pat
     -   A descriptive **name** and **summary**.
     -   A **category** (e.g., `design_pattern`, `resilience`, `api_pattern`, `data_access`).
     -   A set of relevant **tags** (e.g., `fastapi`, `caching`, `decorator`).
-    -   A **quality_score** (between 0.0 and 1.0) grading structural health and reusability.
+    -   A **quality_score** (between 0.0 and 1.0) grading structural health and reusability. The indexing profile uses it to decide whether to store the pattern, and the score is saved with the pattern.
 
 ### Phase D: Storage & FTS Deduplication
 The database layer (`pattern_vault/store/db.py`) handles persistence:
--   **Deduplication**: Computes a SHA-256 hash of the code chunk. If the hash already exists in the database, the record is skipped, avoiding duplication.
--   **FTS5 indexing**: A SQLite Full-Text Search (FTS5) virtual table updates automatically via database triggers, maintaining sub-millisecond search capabilities across names, summaries, and categories.
+-   **Deduplication**: Computes a SHA-256 hash of the code chunk. If the hash already exists in the database, the record is skipped, avoiding duplication. On re-index, chunks already stored are not sent to the model again; chunks it rejected before are.
+-   **FTS5 indexing**: A SQLite Full-Text Search (FTS5) virtual table updates automatically via database triggers, searching names, summaries, tags, categories, languages and user notes. The code text itself is not indexed.
 
 ---
 
@@ -105,7 +107,7 @@ sequenceDiagram
 ```
 
 ### Agent Tools Definition
-The agent is empowered with 7 core tools (configured in `pattern_vault/agent/tools.py`):
+The agent is empowered with 8 core tools (configured in `pattern_vault/agent/tools.py`):
 1.  `scan_directory`: List directory structure, file extensions, and sizes.
 2.  `read_file`: Retrieve up to 200 lines of file content for safe context consumption.
 3.  `parse_symbols`: Extract functions, classes, and methods via tree-sitter AST.
@@ -113,6 +115,7 @@ The agent is empowered with 7 core tools (configured in `pattern_vault/agent/too
 5.  `save_insight`: Store repository-wide structural highlights.
 6.  `search_patterns`: Search the existing pattern vault.
 7.  `vault_stats`: Fetch stats about indexed contents.
+8.  `clone_github_repo`: Clone a public GitHub repository into `.temp/` for analysis.
 
 ---
 

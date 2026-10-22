@@ -50,8 +50,8 @@ Pattern Vault relies on an LLM to identify, classify, and summarize reusable pat
     ```bash
     export PATTERN_VAULT_BACKEND=anthropic
     export ANTHROPIC_API_KEY="your-sk-ant-api-key"
-    # Optional model override (defaults to Claude 3.5 Sonnet)
-    export PATTERN_VAULT_MODEL="claude-3-5-sonnet-20241022"
+    # Optional model override (defaults to claude-sonnet-4-20250514)
+    export PATTERN_VAULT_MODEL="claude-sonnet-4-20250514"
     ```
 
 === "AWS Bedrock"
@@ -93,7 +93,7 @@ Pattern Vault relies on an LLM to identify, classify, and summarize reusable pat
 Let's test the installation by indexing a local folder (or even the Pattern Vault directory itself!) and performing an intent search.
 
 ### 1. Run a Dry-Run Indexing Job
-A dry-run performs directory scanning and AST chunking *without* making any expensive LLM calls. Excellent for checking filters and file sizes:
+A dry-run performs directory scanning and AST chunking *without* making any expensive LLM calls. Excellent for checking filters and file sizes. The log also names languages with no tree-sitter grammar and counts chunks too large to send:
 ```bash
 uv run pv index ./pattern_vault --dry-run
 ```
