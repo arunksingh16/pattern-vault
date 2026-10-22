@@ -116,7 +116,7 @@ class MCPServerMonitor:
                 sys.executable,
                 "-m",
                 "pattern_vault.cli",
-                "serve",
+                "mcp",
                 "--transport",
                 "http",
                 "--host",

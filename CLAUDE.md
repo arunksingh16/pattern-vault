@@ -68,7 +68,8 @@ pattern-vault/
 │   ├── __init__.py
 │   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost/ollama)
 │   ├── settings.py             # ★ The only place config is read: env > config.toml > default
-│   ├── cli.py                  # CLI entry point: index, search, stats, chat, serve
+│   ├── web_dist/               # Built UI copied in at release time (git-ignored)
+│   ├── cli.py                  # CLI (`pattern-vault`/`pv`): serve (API+UI), mcp, index, search, stats, chat
 │   ├── store/
 │   │   ├── __init__.py
 │   │   └── db.py               # ★ SQLite schema, CRUD, FTS5 search, dedup, stats
@@ -259,7 +260,10 @@ uv run pv search "auth" --category api_pattern --language python
 uv run pv stats                              # vault statistics
 uv run pv chat                               # terminal agentic chat
 
-# ── Custom React UI (primary) ──
+# ── One command: API + built UI on one port (uses web/dist in a checkout) ──
+uv run pv serve [--port 8001]                                  # http://localhost:8001
+
+# ── Custom React UI dev servers (hot reload) ──
 uvicorn pattern_vault.api.main:app --port 8001 --reload       # backend API
 cd web && npm run dev                                # frontend at :5173 (proxies /api to :8001)
 
@@ -268,7 +272,7 @@ chainlit run pattern_vault/ui/app.py                           # browser chat at
 
 # ── MCP server ──
 uv run python -m pattern_vault.server.mcp_server                # MCP server (stdio)
-uv run pv serve --transport http --port 8002                    # MCP server (HTTP)
+uv run pv mcp --transport http --port 8002                      # MCP server (HTTP)
 ```
 
 ## MCP tools (for Claude Code / claude.ai)

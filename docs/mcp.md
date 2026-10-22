@@ -50,7 +50,7 @@ Add the `pattern-vault` server definition. Replace `/absolute/path/to/pattern-va
 If you prefer to run the server in HTTP mode, start the daemon first:
 
 ```bash
-uv run pv serve --transport http --host 127.0.0.1 --port 8002
+pattern-vault mcp --transport http --host 127.0.0.1 --port 8002
 ```
 
 Then configure your IDE (such as Cursor or Windsurf) to point to the server url:

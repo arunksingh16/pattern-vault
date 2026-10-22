@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pattern-vault"
-version = "0.1.0"
+version = "0.2.0"
 description = "Extract, index, and retrieve code patterns from any repo"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -32,6 +32,9 @@ dependencies = [
     "tree-sitter-typescript>=0.23.0",
     "pydantic>=2.0",
     "tomli-w>=1.0",
+    "fastapi>=0.115.0",
+    "starlette>=1.0.1",
+    "uvicorn[standard]>=0.34.0",
 ]
 
 [project.optional-dependencies]
@@ -67,10 +70,14 @@ docs = [
 
 
 [project.scripts]
+pattern-vault = "pattern_vault.cli:main"
 pv = "pattern_vault.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["pattern_vault*"]
+
+[tool.setuptools.package-data]
+pattern_vault = ["web_dist/**/*"]
 exclude = ["tests*", "web*"]
 
 [tool.bandit]

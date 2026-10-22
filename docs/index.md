@@ -53,7 +53,7 @@ flowchart TB
     user["Developer / Claude Code / Browser UI"]
 
     subgraph access["Access Layer"]
-        cli["CLI\nindex / search / stats / chat / serve"]
+        cli["CLI\nserve / setup / index / search / stats / chat / mcp"]
         mcp["FastMCP Server\n8 vault tools"]
         web["React Dashboard\nVite + TanStack Query + Zustand"]
         api["FastAPI BFF\nchat / patterns / workspace / usage"]

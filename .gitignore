@@ -13,6 +13,8 @@ web/.chainlit
 .files/
 HANDOFF.md
 image.png
+# --- Built UI copied into the package at release time ---
+pattern_vault/web_dist/
 # --- Python ---
 __pycache__/
 *.pyc

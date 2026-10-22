@@ -37,7 +37,7 @@ flowchart TB
     user["Developer / Claude Code / Browser UI"]
 
     subgraph access["Access Layer"]
-        cli["CLI\nindex / search / stats / chat / serve"]
+        cli["CLI\nserve / setup / index / search / stats / chat / mcp"]
         mcp["FastMCP Server\n8 vault tools"]
         web["React Dashboard\nVite + TanStack Query + Zustand"]
         api["FastAPI BFF\nchat / patterns / workspace / usage"]
@@ -167,7 +167,8 @@ uv run pv index /path/to/repo --profile curated
 uv run pv search "auth middleware" --category api_pattern --language python
 uv run pv search "worker queue" --full
 uv run pv chat
-uv run pv serve --transport http --host 127.0.0.1 --port 8000
+uv run pv serve                      # API + UI on one port (http://localhost:8001)
+uv run pv mcp --transport http --host 127.0.0.1 --port 8000
 ```
 
 Indexing profiles:
@@ -260,7 +261,7 @@ HTTP MCP client config:
 This HTTP server is separate from the stdio process above. Start and stop it from the dashboard MCP panel, or run it manually with:
 
 ```bash
-uv run pv serve --transport http --host 127.0.0.1 --port 8002
+uv run pv mcp --transport http --host 127.0.0.1 --port 8002
 ```
 
 Then ask Claude Code:

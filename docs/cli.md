@@ -1,6 +1,6 @@
 # CLI Reference Guide
 
-Pattern Vault provides a powerful Command Line Interface, exposed as the `pv` executable. This guide outlines every command, sub-option, and execution profile available.
+Pattern Vault provides a powerful Command Line Interface, exposed as the `pattern-vault` executable (with `pv` as a short alias). This guide outlines every command, sub-option, and execution profile available.
 
 ---
 
@@ -121,17 +121,40 @@ pv chat
 
 ---
 
-## 5. `pv serve`
-Launches the Pattern Vault Model Context Protocol (MCP) server over HTTP transport. (For stdio transport, run the module directly as explained in the [MCP Integration Guide](mcp.md)).
+## 5. `pattern-vault serve`
+Starts the API and the web UI together on one port. If the UI hasn't been built (for example in a fresh source checkout), it serves the API only and says how to build the UI.
 
 ### Syntax
 ```bash
-pv serve [OPTIONS]
+pattern-vault serve [OPTIONS]
 ```
 
 ### Options
 | Option | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `--transport` | `TEXT` | `http` | Transport protocol to listen on: `http` or `sse`. |
-| `--host` | `TEXT` | `127.0.0.1` | The host interface to bind the server socket to. |
-| `--port` | `INTEGER`| `8002` | Port to expose the HTTP endpoints on. |
+| `--host` | `TEXT` | `127.0.0.1` | Interface to listen on. Anything other than localhost prints a warning, because Settings and your API keys become reachable from the network. |
+| `--port` | `INTEGER` | `server.port` from the config file, else `8001` | Port for the API and UI. If it's taken, `serve` exits and suggests another port. |
+
+The API only answers requests addressed to `localhost`, `127.0.0.1` or `[::1]` (plus the `--host` value). This blocks web pages that try to reach it through DNS rebinding. `--host 0.0.0.0` turns that check off.
+
+---
+
+## 6. `pattern-vault mcp`
+Runs the MCP server. This command used to be `pv serve`; `serve` now starts the UI. For stdio, which Claude Code uses when it launches the server itself, you can also run the module directly as explained in the [MCP Integration Guide](mcp.md).
+
+### Syntax
+```bash
+pattern-vault mcp [OPTIONS]
+```
+
+### Options
+| Option | Type | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `--transport` | `TEXT` | `stdio` | `stdio` or `http`. |
+| `--host` | `TEXT` | `127.0.0.1` | Host for the HTTP transport. |
+| `--port` | `INTEGER` | `8000` | Port for the HTTP transport. |
+
+---
+
+## 7. `pattern-vault --version`
+Prints the installed version.
