@@ -12,6 +12,9 @@ web/.chainlit
 .codex/
 .files/
 HANDOFF.md
+# Agent design docs and implementation plans stay local
+docs/superpowers/
+.superpowers/
 image.png
 # --- Built UI copied into the package at release time ---
 pattern_vault/web_dist/
