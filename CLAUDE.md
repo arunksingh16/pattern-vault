@@ -60,6 +60,8 @@ pattern-vault/
 ├── CLAUDE.md                   # ← you are here
 ├── README.md                   # user-facing docs
 ├── HANDOFF.md                  # Agent handoff: current state + ordered work plan
+├── scripts/install.sh          # One-line installer (release workflow fills in version + wheel URL)
+├── .github/workflows/release.yml  # v* tag → wheel with UI + install.sh on a GitHub release
 ├── .mcp.json                   # MCP config for Claude Code
 ├── .gitignore
 ├── .chainlit/
@@ -277,6 +279,18 @@ chainlit run pattern_vault/ui/app.py                           # browser chat at
 uv run python -m pattern_vault.server.mcp_server                # MCP server (stdio)
 uv run pv mcp --transport http --port 8002                      # MCP server (HTTP)
 ```
+
+## Releasing
+
+1. Bump `version` in `pyproject.toml` (and `web/package.json`, plus the label in `web/src/components/SideNav.tsx`).
+2. Commit, then push a matching tag, for example `git tag v0.2.0 && git push origin v0.2.0`.
+3. `release.yml`:
+   - checks the tag matches `pyproject.toml`
+   - builds the UI into `pattern_vault/web_dist`
+   - builds the wheel
+   - generates `install.sh` with that wheel's URL
+   - publishes the GitHub release
+4. The `install-smoke` CI job installs the wheel through `scripts/install.sh` with no terminal and checks `serve` on every push.
 
 ## MCP tools (for Claude Code / claude.ai)
 

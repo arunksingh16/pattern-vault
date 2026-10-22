@@ -6,6 +6,37 @@ Most teams and individual developers repeatedly rebuild the same ideas: retry wr
 
 Pattern Vault scans repositories, chunks source code with tree-sitter, asks a model to classify reusable patterns, and stores the useful ones in SQLite with full-text search. You can query it from the CLI, the React dashboard, or Claude Code through MCP.
 
+## Install
+
+On macOS or Linux, one line installs Pattern Vault and walks you through setup:
+
+```bash
+curl -fsSL https://github.com/arunksingh16/pattern-vault/releases/latest/download/install.sh | sh
+```
+
+- **What gets installed:** you don't need Python, Node or a clone of this repo first.
+  - If `uv` is missing, the installer installs it, then installs the `pattern-vault` command (alias `pv`) with its own Python.
+- **Setup questions:**
+  - If Ollama is running, it uses Ollama and one of your pulled models. Nothing is downloaded for you.
+  - Otherwise you choose Anthropic, Bedrock or Bifrost, or skip.
+  - Then your code folders, the vault location and the port.
+- **Where answers are saved:** `~/.pattern-vault/config.toml`.
+- **Without a terminal** (CI, Docker), it accepts the defaults.
+
+Then:
+
+```bash
+pattern-vault serve              # API + UI on http://localhost:8001 (--port to change)
+pattern-vault setup              # answer the setup questions again
+```
+
+You can also change the model, paste an API key or edit code folders later in the UI's **Settings** page. Environment variables still work and override the config file.
+
+- **Upgrade:** run the install line again; your config and vault are kept.
+- **Uninstall:** `uv tool uninstall pattern-vault`. `~/.pattern-vault/` (config and vault) is left in place.
+
+Windows isn't supported yet. A Claude Pro/Max subscription can't power Pattern Vault's own indexing; Anthropic doesn't allow third-party apps to use claude.ai logins. Use Ollama, an API key or Bedrock. Claude Code on your subscription can still read the vault over MCP or the CLI.
+
 ## Why This Exists
 
 Pattern Vault is for developers who learn by collecting strong examples from open source and their own previous projects.
@@ -93,11 +124,11 @@ flowchart TB
     client --> ollama
 ```
 
-## Quick Start
+## Develop From Source
 
 Prerequisites:
 
-- Python 3.10-3.13. Use 3.11-3.13 if you plan to run the legacy Chainlit UI.
+- Python 3.11-3.13. Use 3.11-3.13 if you plan to run the legacy Chainlit UI.
 - Node.js 20+ for the React dashboard.
 - One model backend: Anthropic API key, AWS Bedrock access, Bifrost, or Ollama.
 
@@ -310,6 +341,7 @@ export PATTERN_VAULT_DB=/path/to/patterns.db
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `PATTERN_VAULT_CONFIG` | `~/.pattern-vault/config.toml` | Config file written by `pattern-vault setup` and Settings; every variable below can also live there, and the variable wins |
 | `PATTERN_VAULT_BACKEND` | `anthropic` | `anthropic`, `bedrock`, `bifrost`, or `ollama` |
 | `PATTERN_VAULT_MODEL` | backend-specific | Override model ID |
 | `PATTERN_VAULT_DB` | `~/.pattern-vault/patterns.db` | SQLite database path |
@@ -346,22 +378,25 @@ cd web && npm run build
 uv build
 ```
 
-The GitHub Actions workflow runs backend lint/tests across Python 3.11, 3.12, and 3.13, builds and smoke-tests the Python wheel, and runs a frontend production build on Node 20.
+The GitHub Actions workflow runs backend lint/tests across Python 3.11, 3.12, and 3.13, builds and smoke-tests the Python wheel, runs a frontend production build on Node 20, and installs the wheel through `scripts/install.sh` with no terminal before checking `pattern-vault serve`.
 
 ## Packaging
 
 The Python application is packaged as `pattern-vault`.
 
 ```bash
+cd web && npm run build && cd ..
+cp -R web/dist pattern_vault/web_dist   # put the UI inside the wheel
 uv build
-python -m pip install dist/pattern_vault-0.1.0-py3-none-any.whl
-pv --help
+python -m pip install dist/pattern_vault-0.2.0-py3-none-any.whl
+pattern-vault --help
 ```
 
-Default install includes the CLI, MCP server, indexing pipeline, and core model clients. Optional extras keep heavyweight or UI-specific dependencies out of the base install:
+Releases are built by `.github/workflows/release.yml` when a `v*` tag matching `pyproject.toml` is pushed. The workflow attaches the wheel (UI included) and a generated `install.sh` to the GitHub release.
+
+Default install includes the CLI, the API and UI server, the MCP server, the indexing pipeline, and the core model clients. Optional extras keep heavyweight or UI-specific dependencies out of the base install:
 
 ```bash
-pip install "pattern-vault[web]"        # FastAPI backend for the React dashboard
 pip install "pattern-vault[legacy-ui]"  # Chainlit UI
 pip install "pattern-vault[search]"     # planned vector/hybrid search dependencies
 pip install "pattern-vault[bedrock]"    # Anthropic Bedrock extra dependencies

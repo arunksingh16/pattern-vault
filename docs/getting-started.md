@@ -4,17 +4,36 @@ This guide walks you through setting up Pattern Vault on your local machine, con
 
 ---
 
-## Prerequisites
+## Install (recommended)
+
+On macOS or Linux:
+
+```bash
+curl -fsSL https://github.com/arunksingh16/pattern-vault/releases/latest/download/install.sh | sh
+```
+
+-   **No setup needed first:** you don't need Python, Node or a clone of the repo. The installer installs `uv` if it's missing, then the `pattern-vault` command (alias `pv`).
+-   **Setup** asks for your model backend, code folders, vault location and port, and saves them to `~/.pattern-vault/config.toml`.
+    -   If Ollama is running, setup uses it by default with one of your pulled models.
+-   **Start it:** `pattern-vault serve`, then open `http://localhost:8001`.
+-   **Change settings later:** use the UI's Settings page, or run `pattern-vault setup` again.
+-   **Upgrade:** re-run the install line. Uninstall with `uv tool uninstall pattern-vault`; your config and vault in `~/.pattern-vault/` are kept.
+
+The rest of this page sets Pattern Vault up from source, for development.
+
+---
+
+## Prerequisites (from source)
 
 Before installing, ensure your environment meets the following specifications:
 
--   **Python**: Version `3.10` to `3.13` (Python `3.11` to `3.13` is required if you plan to run the legacy Chainlit interface).
+-   **Python**: Version `3.11` to `3.13` (Python `3.11` to `3.13` is required if you plan to run the legacy Chainlit interface).
 -   **Node.js**: Version `20` or higher (required for the Vite + React dashboard UI).
 -   **Package Manager**: We highly recommend [uv](https://github.com/astral-sh/uv) for fast, predictable Python environment management.
 
 ---
 
-## Installation
+## Installation From Source
 
 Follow these steps to clone the repository and install the backend and frontend package dependencies.
 

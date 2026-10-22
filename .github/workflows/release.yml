@@ -1,0 +1,62 @@
+name: Release
+
+# Push a tag like v0.2.0 (matching pyproject.toml) to publish a release with the wheel
+# (UI included) and an install.sh that installs exactly that wheel.
+on:
+  push:
+    tags: [ "v*" ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Check the tag matches pyproject.toml
+      run: |
+        version="$(sed -n 's/^version = "\(.*\)"$/\1/p' pyproject.toml | head -n 1)"
+        if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+          echo "Tag $GITHUB_REF_NAME does not match pyproject.toml version $version" >&2
+          exit 1
+        fi
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+
+    - name: Build the web UI
+      working-directory: ./web
+      run: |
+        npm ci
+        npm run build
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Build the wheel with the UI inside
+      run: |
+        pip install uv
+        cp -R web/dist pattern_vault/web_dist
+        uv build
+        unzip -l dist/*.whl | grep -q 'pattern_vault/web_dist/index.html'
+
+    - name: Generate install.sh for this release
+      run: |
+        wheel="$(cd dist && ls pattern_vault-*.whl)"
+        url="https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/${wheel}"
+        sed -e "s|@VERSION@|${GITHUB_REF_NAME#v}|" -e "s|@WHEEL_URL@|${url}|" scripts/install.sh > dist/install.sh
+        grep -q "$url" dist/install.sh
+
+    - name: Publish the GitHub release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes

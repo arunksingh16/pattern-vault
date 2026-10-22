@@ -63,3 +63,50 @@ jobs:
     - name: Build frontend
       working-directory: ./web
       run: npm run build
+
+  install-smoke:
+    # Installs the built wheel exactly as `curl | sh` would (no terminal), then serves it.
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 20
+        cache: npm
+        cache-dependency-path: web/package-lock.json
+
+    - name: Build the web UI
+      working-directory: ./web
+      run: |
+        npm ci
+        npm run build
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Build the wheel with the UI inside
+      run: |
+        pip install uv
+        cp -R web/dist pattern_vault/web_dist
+        uv build
+        unzip -l dist/*.whl | grep -q 'pattern_vault/web_dist/index.html'
+
+    - name: Lint install.sh
+      run: uvx --from shellcheck-py shellcheck scripts/install.sh
+
+    - name: Install through install.sh with no terminal
+      run: cat scripts/install.sh | PV_VERSION=ci PV_WHEEL_URL="$PWD/$(ls dist/*.whl)" sh
+
+    - name: Serve the API and UI
+      run: |
+        pv_bin="$(uv tool dir --bin)/pattern-vault"
+        "$pv_bin" --version
+        "$pv_bin" serve --port 8765 &
+        for _ in $(seq 1 30); do curl -sf http://127.0.0.1:8765/api/health >/dev/null && break; sleep 1; done
+        curl -sf http://127.0.0.1:8765/api/health
+        curl -sf http://127.0.0.1:8765/ | grep -q 'id="root"'
