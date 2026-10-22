@@ -64,8 +64,6 @@ pattern-vault/
 ├── .github/workflows/release.yml  # v* tag → wheel with UI + install.sh on a GitHub release
 ├── .mcp.json                   # MCP config for Claude Code
 ├── .gitignore
-├── .chainlit/
-│   └── config.toml             # Chainlit UI settings
 ├── pattern_vault/
 │   ├── __init__.py
 │   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost/ollama)
@@ -89,23 +87,20 @@ pattern-vault/
 │   ├── server/
 │   │   ├── __init__.py
 │   │   └── mcp_server.py       # FastMCP server — 8 tools exposed to Claude Code
-│   ├── api/                    # ★ FastAPI BFF for the React frontend
-│   │   ├── __init__.py
-│   │   ├── main.py             # App, CORS, lifespan, router mounts
-│   │   ├── deps.py             # DB connection dependency injection
-│   │   └── routes/
-│   │       ├── workspace.py    # Repo/path indexing jobs, filters, stream/replay
-│   │       ├── patterns.py     # CRUD + FTS search for patterns
-│   │       ├── stats.py        # Health check, vault stats, categories, tags
-│   │       ├── usage.py        # Token usage summaries
-│   │       ├── insights.py     # Repo-level insights
-│   │       ├── history.py      # Chat history listing/reads
-│   │       ├── mcp_monitor.py  # Dedicated HTTP MCP process monitor
-│   │       ├── settings.py     # GET/PUT settings (secrets masked), connection test, Ollama models
-│   │       └── chat.py         # ★ POST /api/chat → SSE stream from orchestrator
-│   └── ui/
+│   └── api/                    # ★ FastAPI BFF for the React frontend
 │       ├── __init__.py
-│       └── app.py              # Chainlit chat UI (legacy, still works)
+│       ├── main.py             # App, CORS, lifespan, router mounts
+│       ├── deps.py             # DB connection dependency injection
+│       └── routes/
+│           ├── workspace.py    # Repo/path indexing jobs, filters, stream/replay
+│           ├── patterns.py     # CRUD + FTS search for patterns
+│           ├── stats.py        # Health check, vault stats, categories, tags
+│           ├── usage.py        # Token usage summaries
+│           ├── insights.py     # Repo-level insights
+│           ├── history.py      # Chat history listing/reads
+│           ├── mcp_monitor.py  # Dedicated HTTP MCP process monitor
+│           ├── settings.py     # GET/PUT settings (secrets masked), connection test, Ollama models
+│           └── chat.py         # ★ POST /api/chat → SSE stream from orchestrator
 └── web/                        # ★ React frontend (Vite + React 19 + TypeScript)
     ├── package.json
     ├── vite.config.ts          # Proxies /api to :8001, @/ path alias
@@ -153,7 +148,7 @@ User: "Look at /path/to/repo"
   → Claude confirms what was saved
 ```
 
-The loop runs in `pattern_vault/agent/orchestrator.py`. It yields events (`text`, `tool_call`, `tool_result`, `done`, `error`) which the CLI prints directly and the React/Chainlit UIs render as tool steps.
+The loop runs in `pattern_vault/agent/orchestrator.py`. It yields events (`text`, `tool_call`, `tool_result`, `done`, `error`) which the CLI prints directly and the React UI renders as tool steps.
 
 Max rounds: 15 (safety limit in `MAX_TOOL_ROUNDS`).
 
@@ -170,7 +165,7 @@ PATTERN_VAULT_BACKEND=ollama     → OpenAI / AsyncOpenAI wrapped in Anthropic-c
 
 Functions: `make_client()`, `make_async_client()`, `get_model()`, `describe_backend()`
 
-Consumers: `pattern_vault/agent/orchestrator.py`, `pattern_vault/indexer/extractor.py`, `pattern_vault/ui/app.py`
+Consumers: `pattern_vault/agent/orchestrator.py`, `pattern_vault/indexer/extractor.py`
 
 The MCP server (`pattern_vault/server/mcp_server.py`) does NOT call the Claude API directly — it only reads/writes the database and delegates to the batch indexer when `reindex` is called.
 
@@ -273,9 +268,6 @@ uv run pv setup [--yes]                                        # write ~/.patter
 uvicorn pattern_vault.api.main:app --port 8001 --reload       # backend API
 cd web && npm run dev                                # frontend at :5173 (proxies /api to :8001)
 
-# ── Legacy Chainlit UI (still works) ──
-chainlit run pattern_vault/ui/app.py                           # browser chat at :8000
-
 # ── MCP server ──
 uv run python -m pattern_vault.server.mcp_server                # MCP server (stdio)
 uv run pv mcp --transport http --port 8002                      # MCP server (HTTP)
@@ -331,7 +323,7 @@ This is critical for the agent's effectiveness:
 
 3. **During MCP retrieval**: `search_patterns` returns compact summaries (~150 tokens each). Full code only via explicit `get_pattern`. This keeps context lean when Claude Code queries the vault.
 
-4. **Long conversations**: The React UI persists chat history in SQLite (`chat_sessions`, `chat_messages`). The legacy Chainlit UI writes JSONL under `~/.pattern-vault/chat-history/` (`PATTERN_VAULT_HISTORY_DIR`). Mid-conversation summarisation is not implemented yet.
+4. **Long conversations**: The React UI persists chat history in SQLite (`chat_sessions`, `chat_messages`). Mid-conversation summarisation is not implemented yet.
 
 ## Common development tasks
 
@@ -368,9 +360,6 @@ cd web && npm run build
 
 ## Known limitations and pending work
 
-### Critical
-- **Chainlit requires Python ≤3.13.** Python 3.14 breaks Chainlit's starlette/anyio stack. The React UI is the primary UI, but use Python 3.11-3.13 if you still need Chainlit.
-
 ### Not yet implemented (priority order)
 1. **Vector embeddings + hybrid search**: `chunks.embedding` column exists but is never populated. Needs `sqlite-vec` + sentence-transformer (e.g. `all-MiniLM-L6-v2`). A `pattern_vault/store/search.py` module should implement hybrid BM25 + cosine similarity with weighted merge.
 2. **Incremental reindexing**: Store file hashes in DB, skip unchanged files during re-index. Currently every file gets re-chunked on every run, and only chunks already stored as patterns are skipped (`IndexStats.chunks_skipped`) — chunks the model rejected are sent again, which costs model calls.
@@ -390,7 +379,6 @@ cd web && npm run build
 Core:           anthropic, openai, mcp[cli], tree-sitter, tree-sitter-python, pydantic
 Search planned: sqlite-vec, sentence-transformers are installed but not wired into search yet
 React UI:       fastapi, uvicorn[standard], Node 20, Vite, React 19, TanStack Query, Zustand
-Legacy UI:      chainlit (Python ≤3.13 only)
 Bedrock:        pip install "anthropic[bedrock]"
 More languages: tree-sitter-javascript, tree-sitter-typescript, etc.
 ```

@@ -27,7 +27,7 @@ The rest of this page sets Pattern Vault up from source, for development.
 
 Before installing, ensure your environment meets the following specifications:
 
--   **Python**: Version `3.11` to `3.13` (Python `3.11` to `3.13` is required if you plan to run the legacy Chainlit interface).
+-   **Python**: Version `3.11` to `3.13`.
 -   **Node.js**: Version `20` or higher (required for the Vite + React dashboard UI).
 -   **Package Manager**: We highly recommend [uv](https://github.com/astral-sh/uv) for fast, predictable Python environment management.
 

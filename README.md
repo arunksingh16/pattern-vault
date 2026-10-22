@@ -128,7 +128,7 @@ flowchart TB
 
 Prerequisites:
 
-- Python 3.11-3.13. Use 3.11-3.13 if you plan to run the legacy Chainlit UI.
+- Python 3.11-3.13.
 - Node.js 20+ for the React dashboard.
 - One model backend: Anthropic API key, AWS Bedrock access, Bifrost, or Ollama.
 
@@ -356,10 +356,8 @@ export PATTERN_VAULT_DB=/path/to/patterns.db
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
 | `OLLAMA_HOST` | none | Ollama's own variable; when `OLLAMA_BASE_URL` isn't set, the Ollama URL follows it (e.g. `127.0.0.1:11500`) |
 | `OLLAMA_API_KEY` | `ollama` | Dummy key for OpenAI-compatible client |
-| `PATTERN_VAULT_HISTORY_DIR` | `~/.pattern-vault/chat-history` | Chat history directory for the legacy Chainlit UI (the React UI stores chat in SQLite) |
 | `PATTERN_VAULT_MCP_MONITOR_HOST` | `127.0.0.1` | Host for the dashboard-managed HTTP MCP server |
 | `PATTERN_VAULT_MCP_MONITOR_PORT` | `8002` | Port for the dashboard-managed HTTP MCP server |
-| `PATTERN_VAULT_MCP_URL` | none | Optional HTTP MCP status URL for the legacy Chainlit UI |
 
 ## Development
 
@@ -395,10 +393,9 @@ pattern-vault --help
 
 Releases are built by `.github/workflows/release.yml` when a `v*` tag matching `pyproject.toml` is pushed. The workflow attaches the wheel (UI included) and a generated `install.sh` to the GitHub release.
 
-Default install includes the CLI, the API and UI server, the MCP server, the indexing pipeline, and the core model clients. Optional extras keep heavyweight or UI-specific dependencies out of the base install:
+Default install includes the CLI, the API and UI server, the MCP server, the indexing pipeline, and the core model clients. Optional extras keep heavyweight dependencies out of the base install:
 
 ```bash
-pip install "pattern-vault[legacy-ui]"  # Chainlit UI
 pip install "pattern-vault[search]"     # planned vector/hybrid search dependencies
 pip install "pattern-vault[bedrock]"    # Anthropic Bedrock extra dependencies
 ```
@@ -414,7 +411,6 @@ Bluntly: this is useful, but it is still early.
 - Chunks over 4,000 tokens are skipped rather than split, so very large functions are never indexed. The count is reported as `chunks_oversized`.
 - Extraction is mostly sequential. Large repositories can be slow and expensive.
 - The React build currently pulls many Shiki language/theme chunks; production bundle optimization is needed.
-- The legacy Chainlit UI still exists, but the React dashboard is the direction of travel.
 - Stored patterns depend on model judgment. Curated mode helps, but you should still review important patterns.
 
 ## Repository Map
@@ -426,7 +422,6 @@ pattern_vault/
   indexer/             Scanner, chunker, extractor, indexing profiles
   server/              FastMCP server
   store/               SQLite schema, migrations, CRUD, FTS search
-  ui/                  Legacy Chainlit UI
   client.py            Model backend factory
   cli.py               CLI entry point
 

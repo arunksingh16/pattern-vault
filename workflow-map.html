@@ -479,7 +479,6 @@
     {"id": "claude_code", "lane": "actors", "name": "Claude Code", "detail": "MCP client", "role": "Calls Pattern Vault tools through the MCP server.", "order": 2},
     {"id": "repo", "lane": "actors", "name": "Source Repo", "detail": "/path/to/repo", "role": "Repository being scanned, parsed, or analysed.", "order": 3},
     {"id": "cli", "lane": "surfaces", "name": "CLI", "detail": "pattern_vault/cli.py", "role": "Commands: index, search, stats, chat, serve.", "order": 1},
-    {"id": "chainlit", "lane": "surfaces", "name": "Chainlit UI", "detail": "pattern_vault/ui/app.py", "role": "Legacy browser chat with tool-call steps and MCP status.", "order": 2},
     {"id": "react_ui", "lane": "surfaces", "name": "React UI + BFF", "detail": "web/ + pattern_vault/api/", "role": "Vite+React frontend. FastAPI BFF with SSE chat, patterns, stats, history, insights, usage, workspace, and MCP-monitor APIs. Panels: PatternBrowser, ChatPanel, HistoryPanel, IngestionPanel, InsightsPanel, UsagePanel, VaultPanel, MCPPanel, SettingsPanel.", "order": 3},
     {"id": "mcp", "lane": "surfaces", "name": "MCP Server", "detail": "pattern_vault/server/mcp_server.py", "role": "FastMCP tools for search, get, add, stats, tags, insights, reindex.", "order": 4},
     {"id": "orchestrator", "lane": "agent", "name": "Agent Orchestrator", "detail": "pattern_vault/agent/orchestrator.py", "role": "Claude tool-use loop with a max of 15 rounds per turn.", "order": 1},
@@ -507,7 +506,7 @@
       "edges": [
         {"from": "user", "to": "cli", "label": "search query"},
         {"from": "claude_code", "to": "mcp", "label": "search_patterns"},
-        {"from": "chainlit", "to": "agent_tools", "label": "search_patterns shortcut"},
+        {"from": "react_ui", "to": "store", "label": "GET /api/patterns/search"},
         {"from": "cli", "to": "store", "label": "search_fts(query, filters)"},
         {"from": "mcp", "to": "store", "label": "search_fts(limit)"},
         {"from": "agent_tools", "to": "store", "label": "search_fts"},
@@ -516,10 +515,10 @@
         {"from": "sqlite", "to": "store", "label": "rows + rank"},
         {"from": "store", "to": "cli", "label": "summaries"},
         {"from": "store", "to": "mcp", "label": "JSON results"},
-        {"from": "store", "to": "chainlit", "label": "pattern list/detail"}
+        {"from": "store", "to": "react_ui", "label": "pattern list/detail"}
       ],
       "steps": [
-        {"node": "user", "title": "User asks for a pattern", "body": "A query such as retry, auth middleware, or data access enters through the CLI, Chainlit UI, or an MCP client.", "payload": "query: \"retry with backoff\""},
+        {"node": "user", "title": "User asks for a pattern", "body": "A query such as retry, auth middleware, or data access enters through the CLI, React UI, or an MCP client.", "payload": "query: \"retry with backoff\""},
         {"node": "cli", "title": "Surface normalizes filters", "body": "The CLI command accepts query text plus optional category, language, limit, and full-code flags.", "payload": "category?: string\nlanguage?: string\nlimit: 10"},
         {"node": "store", "title": "Store builds an FTS query", "body": "pattern_vault/store/db.py quotes each query term and combines terms with OR before applying category and language filters.", "payload": "patterns_fts MATCH '\"retry\" OR \"backoff\"'"},
         {"node": "fts", "title": "FTS5 ranks matches", "body": "The virtual table searches pattern name, summary, tags, category, and language, then ranks with BM25.", "payload": "bm25(patterns_fts) AS rank"},
@@ -534,7 +533,7 @@
       "entry": "MCP add_pattern, agent save_pattern/save_insight, or batch index storage",
       "edges": [
         {"from": "claude_code", "to": "mcp", "label": "add_pattern / save_insight"},
-        {"from": "chainlit", "to": "orchestrator", "label": "agent conversation"},
+        {"from": "react_ui", "to": "orchestrator", "label": "POST /api/chat"},
         {"from": "orchestrator", "to": "agent_tools", "label": "tool_use"},
         {"from": "agent_tools", "to": "store", "label": "insert_pattern / insert_insight"},
         {"from": "mcp", "to": "store", "label": "insert_pattern / insert_insight"},
@@ -542,7 +541,7 @@
         {"from": "store", "to": "sqlite", "label": "patterns + chunks"},
         {"from": "sqlite", "to": "fts", "label": "triggers sync FTS"},
         {"from": "store", "to": "mcp", "label": "pattern_id / insight_id"},
-        {"from": "store", "to": "chainlit", "label": "saved confirmation"}
+        {"from": "store", "to": "react_ui", "label": "saved confirmation"}
       ],
       "steps": [
         {"node": "agent_tools", "title": "Save request arrives", "body": "The payload includes name, summary, code_text, category, language, optional tags, quality signal, and source metadata.", "payload": "{name, summary, code_text, category, language, tags[]}"},
@@ -594,11 +593,11 @@
       "id": "agent-analysis",
       "name": "agent analysis",
       "summary": "Run an interactive Claude tool-use loop that scans, reads, parses, searches, and optionally saves patterns.",
-      "entry": "python -m pattern_vault.cli chat or chainlit run pattern_vault/ui/app.py",
+      "entry": "python -m pattern_vault.cli chat or the React UI chat panel",
       "edges": [
-        {"from": "user", "to": "chainlit", "label": "chat message"},
+        {"from": "user", "to": "react_ui", "label": "chat message"},
         {"from": "user", "to": "cli", "label": "chat command"},
-        {"from": "chainlit", "to": "orchestrator", "label": "same tool loop shape"},
+        {"from": "react_ui", "to": "orchestrator", "label": "run_agent_turn_async (SSE)"},
         {"from": "cli", "to": "orchestrator", "label": "run_agent_turn"},
         {"from": "orchestrator", "to": "client_factory", "label": "Claude messages API"},
         {"from": "client_factory", "to": "anthropic", "label": "or selected backend"},
@@ -609,14 +608,14 @@
         {"from": "agent_tools", "to": "chunker", "label": "scan / parse"},
         {"from": "agent_tools", "to": "store", "label": "search / save / stats"},
         {"from": "store", "to": "sqlite", "label": "read/write vault"},
-        {"from": "chainlit", "to": "sqlite", "label": "chat history (SQLite)"}
+        {"from": "react_ui", "to": "sqlite", "label": "chat history (SQLite)"}
       ],
       "steps": [
         {"node": "orchestrator", "title": "Conversation is sent to Claude", "body": "The system prompt tells Claude to inspect repos, call tools proactively, and save only genuinely reusable patterns.", "payload": "SYSTEM_PROMPT + messages + TOOL_DEFINITIONS"},
         {"node": "client_factory", "title": "Backend is selected at runtime", "body": "Environment variables switch between Anthropic direct, AWS Bedrock, and Bifrost without changing caller code.", "payload": "PATTERN_VAULT_BACKEND"},
         {"node": "agent_tools", "title": "Claude chooses tool calls", "body": "Tool calls can scan a directory, read a file, parse symbols, search the vault, save a pattern, save an insight, or fetch stats.", "payload": "scan_directory | read_file | parse_symbols | save_pattern"},
         {"node": "workspace_guard", "title": "File access is constrained", "body": "Paths must be under configured workspace roots, not sensitive filenames or blocked path parts, and source files must fit size and language limits.", "payload": "PATTERN_VAULT_WORKSPACE_ROOTS"},
-        {"node": "chainlit", "title": "UI shows steps", "body": "The Chainlit app wraps tool calls in visible steps and persists a best-effort JSONL transcript.", "payload": "role, content, tool_input, tool_result"}
+        {"node": "react_ui", "title": "UI shows steps", "body": "The React chat panel renders tool calls as steps, and the API stores the session in SQLite.", "payload": "role, content, tool_input, tool_result"}
       ]
     },
     {
@@ -644,27 +643,6 @@
       ]
     },
     {
-      "id": "ui-browse",
-      "name": "view saved patterns",
-      "summary": "Browse recent patterns in Chainlit, open full code, inspect MCP status, and write chat history.",
-      "entry": "Chainlit welcome actions and simple chat commands",
-      "edges": [
-        {"from": "user", "to": "chainlit", "label": "View saved patterns"},
-        {"from": "chainlit", "to": "store", "label": "_load_patterns / get_pattern"},
-        {"from": "store", "to": "sqlite", "label": "SELECT recent patterns"},
-        {"from": "sqlite", "to": "store", "label": "rows"},
-        {"from": "store", "to": "chainlit", "label": "formatted markdown"},
-        {"from": "chainlit", "to": "mcp", "label": "local tool registry introspection"},
-        {"from": "chainlit", "to": "sqlite", "label": "session history"}
-      ],
-      "steps": [
-        {"node": "chainlit", "title": "Welcome actions shortcut common tasks", "body": "The UI exposes buttons for saved patterns, history path, and MCP server status before the user types anything.", "payload": "show_patterns | show_history_path | show_mcp_status"},
-        {"node": "store", "title": "Recent patterns are loaded", "body": "The UI queries the newest pattern metadata and renders a markdown table with action buttons for the first few IDs.", "payload": "ORDER BY updated_at DESC, id DESC LIMIT 25"},
-        {"node": "sqlite", "title": "Opening a pattern fetches chunks", "body": "get_pattern joins pattern metadata with stored code chunks so the UI can render full source details.", "payload": "chunks: [{id, code_text, chunk_type}]"},
-        {"node": "sqlite", "title": "Session events are persisted", "body": "Chat messages, tool calls, and results are stored in chat_sessions and chat_messages tables in SQLite for history browsing.", "payload": "chat_sessions + chat_messages tables"}
-      ]
-    },
-    {
       "id": "backend-routing",
       "name": "model backend routing",
       "summary": "Use one Anthropic-compatible client factory to route extraction and agent turns to Anthropic, Bedrock, Bifrost, or Ollama.",
@@ -672,12 +650,10 @@
       "edges": [
         {"from": "extractor", "to": "client_factory", "label": "extract_patterns_sync/async"},
         {"from": "orchestrator", "to": "client_factory", "label": "run_agent_turn"},
-        {"from": "chainlit", "to": "client_factory", "label": "make_async_client"},
         {"from": "client_factory", "to": "anthropic", "label": "default direct"},
         {"from": "client_factory", "to": "bedrock", "label": "AnthropicBedrock"},
         {"from": "client_factory", "to": "bifrost", "label": "base_url proxy"},
-        {"from": "client_factory", "to": "ollama", "label": "OpenAI-compat adapter"},
-        {"from": "client_factory", "to": "chainlit", "label": "describe_backend"}
+        {"from": "client_factory", "to": "ollama", "label": "OpenAI-compat adapter"}
       ],
       "steps": [
         {"node": "client_factory", "title": "Backend is read from environment", "body": "get_backend defaults to anthropic and accepts bedrock or bifrost as alternatives.", "payload": "PATTERN_VAULT_BACKEND"},
