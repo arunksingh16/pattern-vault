@@ -101,4 +101,5 @@ def check_settings_connection(update: SettingsValues):
 
 @router.get("/settings/ollama-models")
 def ollama_models(base_url: Optional[str] = Query(None)):
-    return {"models": client.list_ollama_models(base_url or settings.get("ollama.base_url"))}
+    models = client.list_ollama_models(base_url or settings.get("ollama.base_url"))
+    return {"models": None if models is None else client.chat_models(models)}

@@ -68,6 +68,7 @@ pattern-vault/
 │   ├── __init__.py
 │   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost/ollama)
 │   ├── settings.py             # ★ The only place config is read: env > config.toml > default
+│   ├── setup_wizard.py         # `pattern-vault setup`: Ollama detection, backend, code folders
 │   ├── web_dist/               # Built UI copied in at release time (git-ignored)
 │   ├── cli.py                  # CLI (`pattern-vault`/`pv`): serve (API+UI), mcp, index, search, stats, chat
 │   ├── store/
@@ -263,6 +264,7 @@ uv run pv chat                               # terminal agentic chat
 
 # ── One command: API + built UI on one port (uses web/dist in a checkout) ──
 uv run pv serve [--port 8001]                                  # http://localhost:8001
+uv run pv setup [--yes]                                        # write ~/.pattern-vault/config.toml
 
 # ── Custom React UI dev servers (hot reload) ──
 uvicorn pattern_vault.api.main:app --port 8001 --reload       # backend API

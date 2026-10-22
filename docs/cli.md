@@ -156,5 +156,28 @@ pattern-vault mcp [OPTIONS]
 
 ---
 
-## 7. `pattern-vault --version`
+## 7. `pattern-vault setup`
+Asks a few questions and writes `~/.pattern-vault/config.toml`. The installer runs it for you; run it again any time, and your current settings are offered as the defaults.
+
+1.  **Model backend:**
+    -   If Ollama is running, setup lists your pulled chat models, without embedding models, and recommends a coding model if you have one.
+    -   With no chat model pulled, it selects `qwen2.5-coder:7b` and prints `ollama pull qwen2.5-coder:7b`. It never downloads models itself.
+    -   Without Ollama, it offers Anthropic (key entered hidden), Bedrock (region, optional keys) or Bifrost (URL, optional key), or lets you skip and set up later in Settings.
+2.  **Code folders:** the folders Pattern Vault may read.
+    -   It suggests common folders that exist (`~/code`, `~/src`, `~/projects`, `~/dev`, `~/repos`, `~/workspace`), otherwise the current folder.
+    -   Choosing your whole home folder asks for confirmation.
+3.  **Vault location** and **port**.
+
+### Syntax
+```bash
+pattern-vault setup [--yes]
+```
+
+| Option | Description |
+| :--- | :--- |
+| `--yes` | Accept every default without asking. Used automatically when there's no terminal, so `curl \| sh` in CI or Docker can't hang. |
+
+---
+
+## 8. `pattern-vault --version`
 Prints the installed version.

@@ -3,6 +3,7 @@ Pattern Vault — CLI entry point.
 
 Usage (also available as `pv`):
     pattern-vault serve [--host HOST] [--port PORT]     # API + UI on one port
+    pattern-vault setup [--yes]                         # model backend, code folders
     pattern-vault index <directory> [--dry-run] [--repo-name NAME]
     pattern-vault search <query> [--category CAT] [--language LANG]
     pattern-vault stats
@@ -175,6 +176,21 @@ def cmd_serve(args):
     uvicorn.run(app, host=host, port=port)
 
 
+def cmd_setup(args):
+    """Ask the setup questions and write the config file."""
+    from . import setup_wizard
+    from .settings import ConfigError
+
+    try:
+        setup_wizard.run_setup(assume_yes=args.yes)
+    except ConfigError as exc:
+        print(f"Your config file has an error, so setup didn't change it: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except (KeyboardInterrupt, EOFError):
+        print("\nSetup cancelled; nothing was saved.", file=sys.stderr)
+        sys.exit(1)
+
+
 def cmd_mcp(args):
     """Run the MCP server."""
     from .server.mcp_server import mcp
@@ -233,6 +249,10 @@ def main(argv: list[str] | None = None):
     p_serve.add_argument("--host", default="127.0.0.1", help="Host to listen on (default: 127.0.0.1)")
     p_serve.add_argument("--port", type=int, default=None, help="Port (default: server.port in config, 8001)")
 
+    # setup
+    p_setup = subparsers.add_parser("setup", help="Choose a model backend and code folders")
+    p_setup.add_argument("--yes", action="store_true", help="Accept the defaults without asking")
+
     # mcp
     p_mcp = subparsers.add_parser("mcp", help="Run the MCP server")
     p_mcp.add_argument("--host", default="127.0.0.1", help="HTTP host")
@@ -251,6 +271,8 @@ def main(argv: list[str] | None = None):
         cmd_chat(args)
     elif args.command == "serve":
         cmd_serve(args)
+    elif args.command == "setup":
+        cmd_setup(args)
     elif args.command == "mcp":
         cmd_mcp(args)
     else:

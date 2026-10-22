@@ -147,3 +147,12 @@ def test_ollama_detection_lists_models():
         assert list_ollama_models(f"http://127.0.0.1:{server.server_port}/v1") == ["qwen2.5-coder:7b"]
     finally:
         server.shutdown()
+
+
+def test_ollama_models_route_lists_only_chat_models(api, monkeypatch):
+    # The Settings dropdown picks the chat model; embedding models would break indexing.
+    monkeypatch.setattr(client_module, "list_ollama_models", lambda *_a, **_k: ["nomic-embed-text", "qwen3:4b", "qwen3:4b"])
+    assert api.get("/api/settings/ollama-models").json() == {"models": ["qwen3:4b"]}
+
+    monkeypatch.setattr(client_module, "list_ollama_models", lambda *_a, **_k: None)
+    assert api.get("/api/settings/ollama-models").json() == {"models": None}

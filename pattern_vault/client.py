@@ -528,6 +528,22 @@ def list_ollama_models(base_url: str, timeout: float = 1.0) -> list[str] | None:
     ]
 
 
+# Name fragments of Ollama embedding models; they can't chat, so they can't extract patterns
+EMBEDDING_MODEL_MARKERS = ("embed", "minilm", "bge-", "bge:")
+
+
+def chat_models(models: list[str]) -> list[str]:
+    """Drop embedding models and repeated names, keeping Ollama's order."""
+    seen: set[str] = set()
+    result = []
+    for model in models:
+        if model in seen or any(marker in model.lower() for marker in EMBEDDING_MODEL_MARKERS):
+            continue
+        seen.add(model)
+        result.append(model)
+    return result
+
+
 def redact(text: str, secrets: Iterable[str | None]) -> str:
     """Replace any secret appearing in text with its mask."""
     for secret in secrets:
