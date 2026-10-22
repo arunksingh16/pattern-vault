@@ -67,6 +67,7 @@ pattern-vault/
 ├── pattern_vault/
 │   ├── __init__.py
 │   ├── client.py               # ★ Central client factory (anthropic/bedrock/bifrost/ollama)
+│   ├── settings.py             # ★ The only place config is read: env > config.toml > default
 │   ├── cli.py                  # CLI entry point: index, search, stats, chat, serve
 │   ├── store/
 │   │   ├── __init__.py
@@ -224,6 +225,9 @@ The extraction prompt in `pattern_vault/indexer/extractor.py` classifies pattern
 | `BIFROST_API_KEY` | No | `dummy` | Bifrost virtual key |
 | `OLLAMA_BASE_URL` | No | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
 | `OLLAMA_API_KEY` | No | `ollama` | Optional dummy key for OpenAI-compatible clients |
+| `PATTERN_VAULT_CONFIG` | No | `~/.pattern-vault/config.toml` | Config file path |
+
+**Config file.** Every setting can also live in `~/.pattern-vault/config.toml` (sections `model`, `ollama`, `anthropic`, `bedrock`, `bifrost`, `server`, `vault`, `workspace`; see `SETTINGS` in `pattern_vault/settings.py`). Precedence is env var, then config file, then default; an env var set to an empty string counts as unset. The file is mode `600`, is re-read when it changes, and is written only through `settings.save()`. Read settings with `settings.get(key)`, never `os.environ` directly.
 
 ## Running
 
