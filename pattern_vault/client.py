@@ -33,9 +33,10 @@ Usage:
 from __future__ import annotations
 
 import json
+import urllib.request
 from dataclasses import dataclass
 from math import ceil
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from pattern_vault import settings
@@ -503,3 +504,48 @@ def describe_backend(overrides: Mapping[str, Any] | None = None) -> str:
         url = _build_ollama_client_kwargs(overrides)["base_url"]
         return f"Ollama → {url} — {model}"
     return f"Anthropic direct — {model}"
+
+
+# ── Settings page helpers ──────────────────────────────────────
+
+
+def list_ollama_models(base_url: str, timeout: float = 1.0) -> list[str] | None:
+    """Return the models pulled into Ollama, or None when Ollama isn't reachable."""
+    native = base_url.strip().rstrip("/")
+    if native.endswith("/v1"):
+        native = native[: -len("/v1")]
+    if not native.startswith(("http://", "https://")):
+        return None
+    try:
+        with urllib.request.urlopen(f"{native}/api/tags", timeout=timeout) as response:  # nosec B310
+            payload = json.loads(response.read().decode("utf-8"))
+    except (OSError, ValueError):
+        return None
+    return [
+        model["name"]
+        for model in payload.get("models", [])
+        if isinstance(model, dict) and model.get("name")
+    ]
+
+
+def redact(text: str, secrets: Iterable[str | None]) -> str:
+    """Replace any secret appearing in text with its mask."""
+    for secret in secrets:
+        if secret and len(secret) >= 4:
+            text = text.replace(secret, settings.mask(secret) or "")
+    return text
+
+
+def check_connection(overrides: Mapping[str, Any]) -> tuple[bool, str]:
+    """Make the cheapest real call with these values (saved or not); never raises."""
+    secrets = [settings.get(key, overrides) for key, spec in settings.SETTINGS.items() if spec.secret]
+    try:
+        client = make_client(overrides)
+        client.messages.create(
+            model=get_model(overrides),
+            max_tokens=16,
+            messages=[{"role": "user", "content": "ping"}],
+        )
+    except Exception as exc:  # every backend failure is reported to the page, not raised
+        return False, redact(str(exc), secrets)
+    return True, f"Connected to {describe_backend(overrides)}"

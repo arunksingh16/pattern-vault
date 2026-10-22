@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from pattern_vault.api.deps import DB_PATH
 from pattern_vault.api.routes import chat, history, insights, mcp_monitor, patterns, stats, usage, workspace
+from pattern_vault.api.routes import settings as settings_routes
 from pattern_vault.api.routes.mcp_monitor import MCPServerMonitor
 from pattern_vault.api.routes.workspace import WorkspaceIndexManager
 from pattern_vault.store.db import get_connection, init_db
@@ -82,6 +83,7 @@ def create_app(
     app.include_router(usage.router, prefix="/api")
     app.include_router(workspace.router, prefix="/api")
     app.include_router(mcp_monitor.router, prefix="/api")
+    app.include_router(settings_routes.router, prefix="/api")
 
     if web_dist is not None:
         app.mount("/", StaticFiles(directory=web_dist, html=True), name="ui")

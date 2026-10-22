@@ -98,6 +98,7 @@ pattern-vault/
 │   │       ├── insights.py     # Repo-level insights
 │   │       ├── history.py      # Chat history listing/reads
 │   │       ├── mcp_monitor.py  # Dedicated HTTP MCP process monitor
+│   │       ├── settings.py     # GET/PUT settings (secrets masked), connection test, Ollama models
 │   │       └── chat.py         # ★ POST /api/chat → SSE stream from orchestrator
 │   └── ui/
 │       ├── __init__.py
