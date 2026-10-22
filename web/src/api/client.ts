@@ -154,6 +154,26 @@ export interface WorkspaceIndexEvent {
   errors?: string[]
 }
 
+export type SettingSource = 'env' | 'config' | 'default'
+
+export interface SettingField {
+  value: string | number | string[] | null  // secrets arrive masked, never in full
+  source: SettingSource
+  secret: boolean
+  env_var: string | null
+}
+
+export interface SettingsResponse {
+  fields: Record<string, SettingField>
+  config_path: string
+  config_error: string | null
+}
+
+export interface ConnectionResult {
+  ok: boolean
+  message: string
+}
+
 export interface DailyTokenUsageRow {
   day: string
   provider: string
@@ -252,6 +272,18 @@ export const api = {
       }),
     indexStatus: (jobId: string) => request<WorkspaceIndexJob>(`/workspace/index/${encodeURIComponent(jobId)}`),
     indexJobs: (limit = 20) => request<WorkspaceIndexJob[]>(`/workspace/index-jobs?limit=${limit}`),
+  },
+
+  settings: {
+    get: () => request<SettingsResponse>('/settings'),
+    update: (values: Record<string, unknown>) =>
+      request<SettingsResponse>('/settings', { method: 'PUT', body: JSON.stringify({ values }) }),
+    test: (values: Record<string, unknown>) =>
+      request<ConnectionResult>('/settings/test', { method: 'POST', body: JSON.stringify({ values }) }),
+    ollamaModels: (baseUrl?: string) =>
+      request<{ models: string[] | null }>(
+        `/settings/ollama-models${baseUrl ? `?base_url=${encodeURIComponent(baseUrl)}` : ''}`
+      ),
   },
 
   mcp: {

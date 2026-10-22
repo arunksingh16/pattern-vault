@@ -140,6 +140,8 @@ def cmd_chat(args):
 def port_available(host: str, port: int) -> bool:
     family = socket.AF_INET6 if ":" in host else socket.AF_INET
     with socket.socket(family, socket.SOCK_STREAM) as sock:
+        # Match uvicorn: TIME_WAIT leftovers from a just-stopped server don't make a port busy
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             sock.bind((host, port))
         except OSError:

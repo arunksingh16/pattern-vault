@@ -49,6 +49,22 @@ def test_serve_exits_cleanly_when_port_busy(capsys):
     assert "already in use" in err and "--port" in err
 
 
+def test_port_is_free_again_right_after_a_server_stops():
+    # Restarting serve leaves the old connections in TIME_WAIT; uvicorn can bind
+    # (SO_REUSEADDR), so the pre-check must not report the port as busy.
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    listener.listen()
+    port = listener.getsockname()[1]
+    client = socket.create_connection(("127.0.0.1", port))
+    accepted, _ = listener.accept()
+    accepted.close()  # server closes first, so its side of the connection enters TIME_WAIT
+    client.close()
+    listener.close()
+
+    assert cli.port_available("127.0.0.1", port)
+
+
 def test_serve_warns_on_all_interfaces(monkeypatch, capsys):
     started = {}
     monkeypatch.setattr(uvicorn, "run", lambda app, **kwargs: started.update(app=app, **kwargs))

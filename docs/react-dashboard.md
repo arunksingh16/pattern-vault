@@ -71,6 +71,23 @@ Manage your IDE connection directly:
 
 ---
 
+### 7. Settings Panel (Model Backend, API Keys, Code Folders)
+Changes save to `~/.pattern-vault/config.toml` and take effect for the next index job or chat; no restart is needed.
+
+-   **Model Backend**: pick Ollama, Anthropic, Bedrock or Bifrost, then fill in the fields for that backend.
+    -   For Ollama, the model list comes from the models you have pulled.
+    -   Leaving the model blank uses the backend's default (`claude-opus-5-5` for Anthropic, `qwen2.5-coder:7b` for Ollama).
+-   **API keys are write-only**:
+    -   The page shows a mask such as `sk-ant-…a1b2`, and the full key is never sent back to the browser.
+    -   **Replace** sets a new value; leaving it empty keeps the saved key.
+-   **Test connection** makes one tiny call with the values in the form, saved or not, and shows "works" or the error with secrets removed.
+-   **Source tags**: each field shows where its value comes from: `env`, `config` or `default`.
+    -   Fields set by an environment variable are locked, because the variable always wins.
+    -   Change those where the variable is set.
+-   **Code Folders**: the folders Copilot and Explorer may read. Explorer shows them as its roots.
+    -   Cloned GitHub repos live in `~/.pattern-vault/repos`, which is always readable.
+-   **Config errors**: if the config file has a syntax error, a banner says so, saved values are ignored, and saving is refused until the file is fixed.
+
 ## Local Development Lifecycle
 
 To start developing or customising the React dashboard, you can launch the servers via our unified helper script:

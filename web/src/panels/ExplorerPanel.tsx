@@ -88,7 +88,8 @@ export function ExplorerPanel() {
   })
   const [selectedRoot, setSelectedRoot] = useState<string | null>(null)
   useEffect(() => {
-    if (roots && roots.length > 0 && !selectedRoot) {
+    // Code folders can change in Settings; never keep a root that is no longer allowed
+    if (roots && roots.length > 0 && !roots.some((root) => root.path === selectedRoot)) {
       setSelectedRoot(roots[0].path)
     }
   }, [roots, selectedRoot])
