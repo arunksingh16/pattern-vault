@@ -25,7 +25,7 @@ def test_env_overrides_config_and_config_overrides_default(monkeypatch, write_co
 
 def test_empty_env_var_counts_as_unset(monkeypatch, write_config):
     # Shell profiles often export empty keys; they must not hide (or lock) the saved key.
-    write_config('[anthropic]\napi_key = "sk-ant-from-config-123456"\n')
+    write_config('[anthropic]\napi_key = "sk-ant-from-config-123456"\n')  # pragma: allowlist secret
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
 
     assert settings.get("anthropic.api_key") == "sk-ant-from-config-123456"
@@ -47,7 +47,7 @@ def test_config_edit_is_seen_without_restart(write_config):
 def test_save_keeps_secret_when_blank_and_file_is_private(monkeypatch, tmp_path):
     # The Settings form sends "" for an untouched key; that must never wipe the saved key.
     monkeypatch.setenv(settings.CONFIG_PATH_ENV, str(tmp_path / "fresh" / "config.toml"))
-    settings.save({"anthropic.api_key": "sk-ant-first-key-abcdef"})
+    settings.save({"anthropic.api_key": "sk-ant-first-key-abcdef"})  # pragma: allowlist secret
     settings.save({"anthropic.api_key": "", "model.backend": "anthropic"})
 
     assert settings.get("anthropic.api_key") == "sk-ant-first-key-abcdef"

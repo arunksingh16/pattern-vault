@@ -21,13 +21,13 @@ const BACKEND_FIELDS: Record<Backend, string[]> = {
 const FIELD_LABELS: Record<string, string> = {
   'ollama.base_url': 'Base URL',
   'model.model': 'Model',
-  'anthropic.api_key': 'API key',
+  'anthropic.api_key': 'API key',  // pragma: allowlist secret
   'bedrock.region': 'Region',
   'bedrock.access_key_id': 'Access key ID',
-  'bedrock.secret_access_key': 'Secret access key',
+  'bedrock.secret_access_key': 'Secret access key',  // pragma: allowlist secret
   'bedrock.session_token': 'Session token',
   'bifrost.url': 'URL',
-  'bifrost.api_key': 'API key',
+  'bifrost.api_key': 'API key',  // pragma: allowlist secret
 }
 
 // Placeholders only; the backend applies these defaults when the field is blank

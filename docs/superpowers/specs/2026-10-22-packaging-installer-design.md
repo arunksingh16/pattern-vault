@@ -156,7 +156,7 @@ model = "qwen2.5-coder:7b"
 base_url = "http://localhost:11434/v1"
 
 [anthropic]
-api_key = "sk-ant-..."
+api_key = "sk-ant-..."  # pragma: allowlist secret
 
 [bedrock]
 region = "us-east-1"

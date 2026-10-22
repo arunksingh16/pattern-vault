@@ -12,7 +12,7 @@ from pattern_vault import settings
 from pattern_vault.api.main import create_app
 from pattern_vault.client import list_ollama_models
 
-SECRET = "sk-ant-api03-supersecretvalue-a1b2"
+SECRET = "sk-ant-api03-supersecretvalue-a1b2"  # pragma: allowlist secret
 MODEL_ENV_VARS = ("PATTERN_VAULT_BACKEND", "PATTERN_VAULT_MODEL", "ANTHROPIC_API_KEY", "OLLAMA_BASE_URL")
 
 

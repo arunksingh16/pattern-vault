@@ -103,7 +103,7 @@ def test_env_overrides_config_and_config_overrides_default(monkeypatch, write_co
     assert settings.get("model.backend", overrides={"model.backend": "bifrost"}) == "bifrost"
 
 def test_empty_env_var_counts_as_unset(monkeypatch, write_config):     # Review Focus 2
-    write_config('[anthropic]\napi_key = "sk-ant-from-config-123456"\n')
+    write_config('[anthropic]\napi_key = "sk-ant-from-config-123456"\n')  # pragma: allowlist secret
     monkeypatch.setenv("ANTHROPIC_API_KEY", "")
     assert settings.get("anthropic.api_key") == "sk-ant-from-config-123456"
     assert settings.source("anthropic.api_key") == "config"
@@ -111,7 +111,7 @@ def test_empty_env_var_counts_as_unset(monkeypatch, write_config):     # Review 
 def test_config_edit_is_seen_without_restart(write_config): ...       # write backend "ollama", read it; rewrite as "bedrock", bump mtime with os.utime(ns=...); get() returns "bedrock"
 
 def test_save_keeps_secret_when_blank_and_file_is_private():
-    settings.save({"anthropic.api_key": "sk-ant-first-key-abcdef"})
+    settings.save({"anthropic.api_key": "sk-ant-first-key-abcdef"})  # pragma: allowlist secret
     settings.save({"anthropic.api_key": "", "model.backend": "anthropic"})
     assert settings.get("anthropic.api_key") == "sk-ant-first-key-abcdef"
     assert stat.S_IMODE(settings.config_path().stat().st_mode) == 0o600
@@ -274,7 +274,7 @@ Write a small middleware; don't use Starlette's `TrustedHostMiddleware`, which s
   - `list_ollama_models(base_url: str, timeout: float = 1.0) -> list[str] | None`. `None` means not reachable. Uses `urllib.request` against `<base without /v1>/api/tags`.
   - `check_connection(overrides: Mapping[str, Any]) -> tuple[bool, str]`. One `make_client(overrides).messages.create(model=get_model(overrides), max_tokens=16, messages=[{"role": "user", "content": "ping"}])`. Returns `(True, "Connected to <describe_backend>")` or `(False, redact(str(exc), secrets))`.
   - `redact(text: str, secrets: Iterable[str | None]) -> str`
-  - `GET /api/settings` returns `{"fields": {key: {"value", "source", "secret", "env_var"}}, "config_path": str, "config_error": str | None}`. Secret `value` is `mask(...)`; `paths` values are lists of strings.
+  - `GET /api/settings` returns `{"fields": {key: {"value", "source", "secret", "env_var"}}, "config_path": str, "config_error": str | None}`. Secret `value` is `mask(...)`; `paths` values are lists of strings. <!-- pragma: allowlist secret -->
   - `PUT /api/settings` with body `{"values": {key: value}}` returns the same shape as GET. Errors:
     - `409` if any key's source is `env`, or the config is malformed
     - `422` for an unknown key, a backend not in `ollama|anthropic|bedrock|bifrost`, or a `workspace.roots` entry that doesn't exist

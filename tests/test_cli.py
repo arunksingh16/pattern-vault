@@ -53,6 +53,8 @@ def test_port_is_free_again_right_after_a_server_stops():
     # Restarting serve leaves the old connections in TIME_WAIT; uvicorn can bind
     # (SO_REUSEADDR), so the pre-check must not report the port as busy.
     listener = socket.socket()
+    # Like uvicorn; on Linux, TIME_WAIT leftovers only allow a rebind if the old server set this too
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("127.0.0.1", 0))
     listener.listen()
     port = listener.getsockname()[1]

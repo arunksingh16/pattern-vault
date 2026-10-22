@@ -11,13 +11,13 @@ def test_client_reads_backend_and_key_from_config_file(monkeypatch, write_config
     # A key pasted in Settings lives only in the config file; the client must use it.
     for name in ("PATTERN_VAULT_BACKEND", "ANTHROPIC_API_KEY"):
         monkeypatch.delenv(name, raising=False)
-    write_config('[model]\nbackend = "anthropic"\n[anthropic]\napi_key = "sk-ant-from-config-a1b2"\n')
+    write_config('[model]\nbackend = "anthropic"\n[anthropic]\napi_key = "sk-ant-from-config-a1b2"\n')  # pragma: allowlist secret
     captured = {}
     monkeypatch.setattr(anthropic, "Anthropic", lambda **kwargs: captured.update(kwargs) or object())
 
     make_client()
 
-    assert captured["api_key"] == "sk-ant-from-config-a1b2"
+    assert captured["api_key"] == "sk-ant-from-config-a1b2"  # pragma: allowlist secret
 
 
 def test_anthropic_default_model_is_opus_5_5(monkeypatch):
