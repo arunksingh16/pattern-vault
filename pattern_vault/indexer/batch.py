@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
 
+from .. import client as model_client
 from ..indexer.chunker import CodeChunk, ast_languages, chunk_file, filter_manifest, scan_directory
 from ..indexer.extractor import extract_patterns_sync
 from ..indexer.profiles import DEFAULT_INDEXING_PROFILE, get_indexing_profile
@@ -158,7 +159,10 @@ def index_directory(
     if pattern_budget is not None:
         log(f"Pattern budget: storing up to {pattern_budget} patterns for this profile.")
 
-    # Step 4: Batch extract patterns via Claude
+    # Step 4: Batch extract patterns via Claude. The backend is fixed for the whole job,
+    # so a Settings save while it runs only affects the next job.
+    job_settings = model_client.snapshot_model_settings()
+    job_model = model_client.get_model(job_settings)
     for batch_start in range(0, len(all_chunks), BATCH_SIZE):
         if pattern_budget is not None and stats.patterns_stored >= pattern_budget:
             log(f"Pattern budget reached ({pattern_budget}); skipping remaining extraction.")
@@ -191,8 +195,10 @@ def index_directory(
                 results = extract_patterns_sync(
                     chunk_dicts,
                     api_key=api_key,
+                    model=job_model,
                     db_path=db_path,
                     profile_guidance=profile_config.guidance,
+                    overrides=job_settings,
                 )
                 break
             except Exception as e:

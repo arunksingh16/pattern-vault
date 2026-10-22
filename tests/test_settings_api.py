@@ -84,7 +84,7 @@ def test_health_reflects_saved_backend(api):
 
 
 def test_connection_test_redacts_secret(api, monkeypatch):
-    def failing_client(overrides=None):
+    def failing_client(overrides=None, **_kwargs):
         raise RuntimeError(f"bad key {SECRET}")
 
     monkeypatch.setattr(client_module, "make_client", failing_client)
@@ -107,7 +107,7 @@ def test_connection_test_uses_unsaved_form_values(api, monkeypatch):
             def create(**kwargs):
                 seen.update(kwargs)
 
-    monkeypatch.setattr(client_module, "make_client", lambda overrides=None: seen.update(o=overrides) or FakeClient)
+    monkeypatch.setattr(client_module, "make_client", lambda overrides=None, **_kw: seen.update(o=overrides) or FakeClient)
 
     response = api.post("/api/settings/test", json={"values": {"model.backend": "ollama", "model.model": "llama3.1:8b"}})
 
@@ -156,3 +156,56 @@ def test_ollama_models_route_lists_only_chat_models(api, monkeypatch):
 
     monkeypatch.setattr(client_module, "list_ollama_models", lambda *_a, **_k: None)
     assert api.get("/api/settings/ollama-models").json() == {"models": None}
+
+
+def test_connection_test_works_through_real_ollama_client(monkeypatch):
+    # Ollama is the installer's default backend; its compat client must accept the test call.
+    import openai
+
+    created = {}
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            created.update(kwargs)
+            self.chat = type("Chat", (), {"completions": self})()
+
+        def create(self, **kwargs):
+            created["request"] = kwargs
+            message = type("Msg", (), {"content": "pong", "tool_calls": []})()
+            return type("Resp", (), {"choices": [type("Choice", (), {"finish_reason": "stop", "message": message})()]})()
+
+    monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+
+    ok, message = client_module.check_connection({"model.backend": "ollama", "model.model": "qwen3:4b"})
+
+    assert ok is True, message
+    assert created["request"]["model"] == "qwen3:4b"
+    # A connection test must fail fast, not retry for minutes.
+    assert created["max_retries"] == 0 and created["timeout"] <= client_module.CONNECTION_TEST_TIMEOUT
+
+
+def test_connection_test_gives_up_quickly_on_a_silent_server(monkeypatch):
+    # A server that accepts but never answers must not leave the page on "Testing…".
+    monkeypatch.setattr(client_module, "CONNECTION_TEST_TIMEOUT", 1.0)
+    with socket.socket() as silent:
+        silent.bind(("127.0.0.1", 0))
+        silent.listen()
+        port = silent.getsockname()[1]
+
+        started = time.monotonic()
+        ok, _message = client_module.check_connection(
+            {"model.backend": "ollama", "ollama.base_url": f"http://127.0.0.1:{port}/v1", "model.model": "x"}
+        )
+
+    assert ok is False
+    assert time.monotonic() - started < 3.0
+
+
+def test_settings_page_loads_with_a_wrongly_typed_value(api, write_config):
+    write_config('[server]\nport = "abc"\n')
+
+    response = api.get("/api/settings")
+
+    assert response.status_code == 200
+    assert response.json()["fields"]["server.port"]["value"] == 8001
+    assert "server.port" in response.json()["config_error"]

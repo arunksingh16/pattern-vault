@@ -64,8 +64,11 @@ def _choose_backend(assume_yes: bool, ask: Ask, ask_secret: Ask, out: Out) -> di
     native_url = base_url.rstrip("/").removesuffix("/v1")
     found = list_ollama_models(base_url)
     models = None if found is None else chat_models(found)
+    # A saved Anthropic/Bedrock/Bifrost choice stays the default, so re-runs and upgrades keep it
+    saved = settings.get("model.backend") if settings.source("model.backend") != "default" else None
+    keep_other = saved is not None and saved != "ollama"
 
-    if models == []:
+    if models == [] and not keep_other:
         out(f"  Found Ollama at {native_url}, but no models are pulled yet.")
         out(f"  Using {OLLAMA_DEFAULT_MODEL}. Pull it with: ollama pull {OLLAMA_DEFAULT_MODEL}")
         return {"model.backend": "ollama", "model.model": OLLAMA_DEFAULT_MODEL}
@@ -79,12 +82,13 @@ def _choose_backend(assume_yes: bool, ask: Ask, ask_secret: Ask, out: Out) -> di
             note = "   (recommended: coding model)" if model == recommended and "coder" in model else ""
             out(f"    {number}) {model}{note}")
         out(f"    {len(models) + 1}) Use a different backend (Anthropic / Bedrock / Bifrost)")
-        choice = _ask_choice(ask, out, len(models) + 1, models.index(default_model) + 1, assume_yes)
+        default_choice = len(models) + 1 if keep_other else models.index(default_model) + 1
+        choice = _ask_choice(ask, out, len(models) + 1, default_choice, assume_yes)
         if choice <= len(models):
             if assume_yes:
                 out(f"  Using {models[choice - 1]}")
             return {"model.backend": "ollama", "model.model": models[choice - 1]}
-    else:
+    elif models is None:
         out("  Ollama not detected.")
 
     return _choose_other_backend(assume_yes, ask, ask_secret, out)

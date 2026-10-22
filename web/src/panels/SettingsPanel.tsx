@@ -369,8 +369,7 @@ export function SettingsPanel() {
 
       {settings?.config_error && (
         <div className="rounded border border-error/40 bg-error/10 px-3 py-2 text-xs text-error">
-          The config file has an error, so saved settings are ignored and saving is disabled until it's fixed:{' '}
-          {settings.config_error}
+          There's a problem in the config file: {settings.config_error}
         </div>
       )}
       {settingsError && (

@@ -86,3 +86,50 @@ def test_workspace_roots_env_splits_on_pathsep(monkeypatch, tmp_path):
     monkeypatch.setenv("PATTERN_VAULT_WORKSPACE_ROOTS", f"{tmp_path / 'a'}{os.pathsep}{tmp_path / 'b'}")
 
     assert settings.get("workspace.roots") == [tmp_path / "a", tmp_path / "b"]
+
+
+def test_wrongly_typed_value_falls_back_and_can_be_fixed_by_saving(monkeypatch, write_config):
+    # A hand-edited `port = "abc"` must not crash serve or the Settings page that would fix it.
+    monkeypatch.delenv("PATTERN_VAULT_BACKEND", raising=False)
+    write_config('[server]\nport = "abc"\n[model]\nbackend = 5\n')
+
+    assert settings.get("server.port") == 8001
+    assert settings.get("model.backend") == "anthropic"
+    assert "server.port" in settings.config_error() and "model.backend" in settings.config_error()
+
+    settings.save({"server.port": 9000})
+
+    assert settings.get("server.port") == 9000
+    assert "server.port" not in (settings.config_error() or "")
+
+
+def test_section_that_is_not_a_table_refuses_save(write_config):
+    write_config('model = "x"\n')
+
+    with pytest.raises(settings.ConfigError):
+        settings.save({"model.backend": "ollama"})
+    assert settings.config_path().read_text() == 'model = "x"\n'
+
+
+@pytest.mark.parametrize(
+    ("ollama_host", "expected"),
+    [
+        ("127.0.0.1:11500", "http://127.0.0.1:11500/v1"),
+        ("0.0.0.0", "http://localhost:11434/v1"),
+        ("https://ollama.internal", "https://ollama.internal:11434/v1"),
+        ("", "http://localhost:11434/v1"),
+    ],
+)
+def test_ollama_base_url_follows_ollama_host(monkeypatch, ollama_host, expected):
+    # OLLAMA_HOST is Ollama's own variable; people who run it elsewhere set only that.
+    monkeypatch.delenv("OLLAMA_BASE_URL", raising=False)
+    monkeypatch.setenv("OLLAMA_HOST", ollama_host)
+
+    assert settings.get("ollama.base_url") == expected
+
+
+def test_ollama_base_url_env_still_wins_over_ollama_host(monkeypatch):
+    monkeypatch.setenv("OLLAMA_HOST", "127.0.0.1:11500")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://gpu-box:11434/v1")
+
+    assert settings.get("ollama.base_url") == "http://gpu-box:11434/v1"

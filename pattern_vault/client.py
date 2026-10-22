@@ -85,9 +85,9 @@ def _build_ollama_client_kwargs(overrides: Mapping[str, Any] | None = None) -> d
     }
 
 
-def get_provider_name() -> str:
+def get_provider_name(overrides: Mapping[str, Any] | None = None) -> str:
     """Return the normalized provider label used for token usage tracking."""
-    return get_backend()
+    return get_backend(overrides)
 
 
 def _safe_jsonable(value: Any) -> Any:
@@ -309,8 +309,8 @@ class _OllamaMessagesAPI:
         *,
         model: str,
         max_tokens: int,
-        system: str | None,
         messages: list[dict[str, Any]],
+        system: str | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> _CompatMessageResponse:
         response = self._client.chat.completions.create(
@@ -331,8 +331,8 @@ class _AsyncOllamaMessagesAPI:
         *,
         model: str,
         max_tokens: int,
-        system: str | None,
         messages: list[dict[str, Any]],
+        system: str | None = None,
         tools: list[dict[str, Any]] | None = None,
     ) -> _CompatMessageResponse:
         response = await self._client.chat.completions.create(
@@ -377,12 +377,14 @@ def get_model(overrides: Mapping[str, Any] | None = None) -> str:
 # ── Sync clients ───────────────────────────────────────────────
 
 
-def make_client(overrides: Mapping[str, Any] | None = None):
+def make_client(overrides: Mapping[str, Any] | None = None, *, timeout: float | None = None):
     """Return a synchronous model client for the active backend.
 
     overrides lets Settings test unsaved form values; they win over env and config.
+    timeout makes the client fail fast (no retries), for connection tests.
     """
     backend = get_backend(overrides)
+    options: dict[str, Any] = {} if timeout is None else {"timeout": timeout, "max_retries": 0}
 
     if backend == "bedrock":
         try:
@@ -396,6 +398,7 @@ def make_client(overrides: Mapping[str, Any] | None = None):
             aws_secret_key=settings.get("bedrock.secret_access_key", overrides),
             aws_session_token=settings.get("bedrock.session_token", overrides),
             aws_region=settings.get("bedrock.region", overrides),
+            **options,
         )
 
     if backend == "bifrost":
@@ -407,6 +410,7 @@ def make_client(overrides: Mapping[str, Any] | None = None):
         return anthropic.Anthropic(
             api_key=settings.get("bifrost.api_key", overrides),
             base_url=bifrost_url,
+            **options,
         )
 
     if backend == "ollama":
@@ -414,7 +418,7 @@ def make_client(overrides: Mapping[str, Any] | None = None):
             from openai import OpenAI
         except ImportError:
             raise RuntimeError("Ollama support requires: pip install openai")
-        return _OllamaCompatClient(OpenAI(**_build_ollama_client_kwargs(overrides)))
+        return _OllamaCompatClient(OpenAI(**_build_ollama_client_kwargs(overrides), **options))
 
     import anthropic
 
@@ -428,7 +432,7 @@ def make_client(overrides: Mapping[str, Any] | None = None):
             "  Bifrost: PATTERN_VAULT_BACKEND=bifrost + BIFROST_URL\n"
             "  Ollama: PATTERN_VAULT_BACKEND=ollama + local Ollama server"
         )
-    return anthropic.Anthropic(api_key=api_key)
+    return anthropic.Anthropic(api_key=api_key, **options)
 
 
 # ── Async clients ──────────────────────────────────────────────
@@ -508,6 +512,14 @@ def describe_backend(overrides: Mapping[str, Any] | None = None) -> str:
 
 # ── Settings page helpers ──────────────────────────────────────
 
+MODEL_SETTING_PREFIXES = ("model.", "ollama.", "anthropic.", "bedrock.", "bifrost.")
+
+
+def snapshot_model_settings() -> dict[str, Any]:
+    """Freeze the backend settings for one job, so a Settings save mid-job doesn't switch backends."""
+    return {key: settings.get(key) for key in settings.SETTINGS if key.startswith(MODEL_SETTING_PREFIXES)}
+
+
 
 def list_ollama_models(base_url: str, timeout: float = 1.0) -> list[str] | None:
     """Return the models pulled into Ollama, or None when Ollama isn't reachable."""
@@ -552,11 +564,14 @@ def redact(text: str, secrets: Iterable[str | None]) -> str:
     return text
 
 
+CONNECTION_TEST_TIMEOUT = 10.0  # seconds; the Settings button must not hang on a dead server
+
+
 def check_connection(overrides: Mapping[str, Any]) -> tuple[bool, str]:
     """Make the cheapest real call with these values (saved or not); never raises."""
     secrets = [settings.get(key, overrides) for key, spec in settings.SETTINGS.items() if spec.secret]
     try:
-        client = make_client(overrides)
+        client = make_client(overrides, timeout=CONNECTION_TEST_TIMEOUT)
         client.messages.create(
             model=get_model(overrides),
             max_tokens=16,

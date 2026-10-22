@@ -229,6 +229,7 @@ The extraction prompt in `pattern_vault/indexer/extractor.py` classifies pattern
 | `BIFROST_URL` | If backend=bifrost | — | e.g. `http://localhost:8080/anthropic` |
 | `BIFROST_API_KEY` | No | `dummy` | Bifrost virtual key |
 | `OLLAMA_BASE_URL` | No | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
+| `OLLAMA_HOST` | No | — | Ollama's own variable; the default Ollama URL follows it when `OLLAMA_BASE_URL` is unset |
 | `OLLAMA_API_KEY` | No | `ollama` | Optional dummy key for OpenAI-compatible clients |
 | `PATTERN_VAULT_CONFIG` | No | `~/.pattern-vault/config.toml` | Config file path |
 

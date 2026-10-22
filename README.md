@@ -354,6 +354,7 @@ export PATTERN_VAULT_DB=/path/to/patterns.db
 | `BIFROST_URL` | none | Bifrost Anthropic-compatible endpoint |
 | `BIFROST_API_KEY` | `dummy` | Bifrost virtual key |
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama OpenAI-compatible endpoint |
+| `OLLAMA_HOST` | none | Ollama's own variable; when `OLLAMA_BASE_URL` isn't set, the Ollama URL follows it (e.g. `127.0.0.1:11500`) |
 | `OLLAMA_API_KEY` | `ollama` | Dummy key for OpenAI-compatible client |
 | `PATTERN_VAULT_HISTORY_DIR` | `~/.pattern-vault/chat-history` | Chat history directory for the legacy Chainlit UI (the React UI stores chat in SQLite) |
 | `PATTERN_VAULT_MCP_MONITOR_HOST` | `127.0.0.1` | Host for the dashboard-managed HTTP MCP server |

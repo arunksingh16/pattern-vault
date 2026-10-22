@@ -33,7 +33,7 @@ def test_extract_patterns_sync_rejects_empty_content(monkeypatch, tmp_path):
     monkeypatch.setenv("PATTERN_VAULT_BACKEND", "anthropic")
     monkeypatch.delenv("PATTERN_VAULT_MODEL", raising=False)
     response = SimpleNamespace(content=[], usage=None)
-    monkeypatch.setattr("pattern_vault.client.make_client", lambda: _FakeClient(response))
+    monkeypatch.setattr("pattern_vault.client.make_client", lambda *_args, **_kwargs: _FakeClient(response))
 
     try:
         extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
@@ -55,7 +55,7 @@ def test_extract_patterns_sync_uses_first_text_block(monkeypatch, tmp_path):
         ],
         usage=None,
     )
-    monkeypatch.setattr("pattern_vault.client.make_client", lambda: _FakeClient(response))
+    monkeypatch.setattr("pattern_vault.client.make_client", lambda *_args, **_kwargs: _FakeClient(response))
 
     results = extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
 
@@ -69,7 +69,7 @@ def test_extract_patterns_sync_rejects_invalid_json(monkeypatch, tmp_path):
         content=[SimpleNamespace(type="text", text="not json")],
         usage=None,
     )
-    monkeypatch.setattr("pattern_vault.client.make_client", lambda: _FakeClient(response))
+    monkeypatch.setattr("pattern_vault.client.make_client", lambda *_args, **_kwargs: _FakeClient(response))
 
     try:
         extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
@@ -84,7 +84,7 @@ def test_extract_patterns_sync_rejects_malformed_result_shape(monkeypatch, tmp_p
         content=[SimpleNamespace(type="text", text='[{"chunk_index": "0", "is_pattern": true}]')],
         usage=None,
     )
-    monkeypatch.setattr("pattern_vault.client.make_client", lambda: _FakeClient(response))
+    monkeypatch.setattr("pattern_vault.client.make_client", lambda *_args, **_kwargs: _FakeClient(response))
 
     try:
         extract_patterns_sync([_chunk_payload()], db_path=tmp_path / "patterns.db")
@@ -594,3 +594,41 @@ def _chunk_payload() -> dict:
         "line_start": 1,
         "line_end": 2,
     }
+
+
+def test_running_job_keeps_its_backend_after_a_settings_save(monkeypatch, tmp_path, write_config):
+    # Spec: a Settings save applies to the next job; a running job must not jump to a
+    # different (possibly paid) backend halfway through.
+    from pattern_vault import client as client_module
+
+    for name in ("PATTERN_VAULT_BACKEND", "PATTERN_VAULT_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    for index in range(3):
+        (repo / f"service_{index}.py").write_text(
+            f"def handler_{index}(value):\n    return value + {index}\n", encoding="utf-8"
+        )
+    write_config('[model]\nbackend = "anthropic"\nmodel = "first-model"\n')
+    calls = []
+
+    class FakeClient:
+        def __init__(self, backend):
+            self.backend = backend
+            self.messages = self
+
+        def create(self, **kwargs):
+            calls.append((self.backend, kwargs["model"]))
+            write_config('[model]\nbackend = "ollama"\nmodel = "second-model"\n')
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text="[]")], usage=None)
+
+    monkeypatch.setattr(
+        client_module,
+        "make_client",
+        lambda overrides=None, **_kwargs: FakeClient(client_module.get_backend(overrides)),
+    )
+    monkeypatch.setattr(batch_module, "BATCH_SIZE", 1)
+
+    index_directory(repo, db_path=tmp_path / "patterns.db")
+
+    assert calls == [("anthropic", "first-model")] * 3

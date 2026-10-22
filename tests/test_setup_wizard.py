@@ -168,3 +168,15 @@ def test_only_embedding_models_counts_as_no_chat_model(monkeypatch, home):
 
     assert settings.get("model.model") == "qwen2.5-coder:7b"
     assert any("ollama pull qwen2.5-coder:7b" in line for line in lines)
+
+
+@pytest.mark.parametrize("models", [["qwen2.5-coder:7b"], []])
+def test_rerun_keeps_a_saved_non_ollama_backend(monkeypatch, home, write_config, models):
+    # Upgrading with `curl | sh` re-runs setup with --yes; an Anthropic user must stay on Anthropic.
+    write_config(f'[model]\nbackend = "anthropic"\n[anthropic]\napi_key = "{KEY}"\n')
+    ollama(monkeypatch, models)
+
+    setup_wizard.run_setup(assume_yes=True, ask=never, ask_secret=never, out=lambda _line: None)
+
+    assert settings.get("model.backend") == "anthropic"
+    assert settings.get("anthropic.api_key") == KEY

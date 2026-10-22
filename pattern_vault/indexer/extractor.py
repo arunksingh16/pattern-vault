@@ -8,6 +8,7 @@ whether each chunk contains a reusable pattern worth indexing.
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from collections.abc import Mapping
 from typing import Any, Optional
 
 from pattern_vault.store.db import get_connection, init_db, record_token_usage
@@ -235,21 +236,25 @@ def extract_patterns_sync(
     model: Optional[str] = None,
     db_path: Optional[Path] = None,
     profile_guidance: str | None = None,
+    overrides: Optional[Mapping[str, Any]] = None,
 ) -> list[ExtractionResult]:
     """
     Extract patterns from a batch of code chunks using Claude.
+
+    Batch indexing passes overrides frozen at job start, so a Settings save
+    mid-job does not switch backends halfway through.
     """
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
     from pattern_vault.client import get_provider_name, make_client, get_model as _get_model
 
     try:
-        client = make_client()
+        client = make_client(overrides)
     except RuntimeError as e:
         raise RuntimeError(str(e))
 
-    model = model or _get_model()
-    provider = get_provider_name()
+    model = model or _get_model(overrides)
+    provider = get_provider_name(overrides)
     user_message = _build_extraction_message(chunks, profile_guidance=profile_guidance)
 
     response = client.messages.create(
