@@ -25,7 +25,7 @@ export function SideNav() {
           <div className="w-8 h-8 rounded bg-gradient-to-br from-primary to-secondary flex-shrink-0" />
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 whitespace-nowrap">
             <p className="font-mono text-label-caps text-on-surface leading-none uppercase">Vault OS</p>
-            <p className="text-[9px] text-outline mt-1 uppercase tracking-tighter">v0.2.0</p>
+            <p className="text-[9px] text-outline mt-1 uppercase tracking-tighter">v0.2.1</p>
           </div>
         </div>
 
