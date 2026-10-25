@@ -19,7 +19,7 @@ import sys
 from importlib.metadata import PackageNotFoundError, version
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
-ALL_INTERFACES = {"0.0.0.0", "::"}
+ALL_INTERFACES = {"0.0.0.0", "::"}  # matched against --host, not bound  # nosec B104
 
 
 def cmd_index(args):

@@ -68,7 +68,7 @@ Pattern Vault relies on an LLM to identify, classify, and summarize reusable pat
 
     ```bash
     export PATTERN_VAULT_BACKEND=anthropic
-    export ANTHROPIC_API_KEY="your-sk-ant-api-key"
+    export ANTHROPIC_API_KEY="your-sk-ant-api-key"  # pragma: allowlist secret
     # Optional model override (defaults to claude-sonnet-4-20250514)
     export PATTERN_VAULT_MODEL="claude-sonnet-4-20250514"
     ```
@@ -80,7 +80,7 @@ Pattern Vault relies on an LLM to identify, classify, and summarize reusable pat
     export PATTERN_VAULT_BACKEND=bedrock
     export AWS_REGION="us-east-1"
     export AWS_ACCESS_KEY_ID="YOUR_ACCESS_KEY"
-    export AWS_SECRET_ACCESS_KEY="YOUR_SECRET_KEY"
+    export AWS_SECRET_ACCESS_KEY="YOUR_SECRET_KEY"  # pragma: allowlist secret
     # Optional session token for temporary credentials
     export AWS_SESSION_TOKEN="YOUR_SESSION_TOKEN"
     ```
@@ -92,7 +92,7 @@ Pattern Vault relies on an LLM to identify, classify, and summarize reusable pat
     export PATTERN_VAULT_BACKEND=bifrost
     export BIFROST_URL="http://localhost:8080/anthropic"
     export PATTERN_VAULT_MODEL="bedrock/eu.anthropic.claude-haiku-4-5-20251001-v1:0"
-    export BIFROST_API_KEY="dummy"
+    export BIFROST_API_KEY="dummy"  # pragma: allowlist secret
     ```
 
 === "Local Ollama"
