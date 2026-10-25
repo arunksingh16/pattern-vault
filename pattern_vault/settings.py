@@ -43,7 +43,7 @@ def _ollama_default_base_url() -> str:
         return "http://localhost:11434/v1"
     parts = urlsplit(host if "://" in host else f"http://{host}")
     hostname = parts.hostname or "localhost"
-    if hostname in ("0.0.0.0", "::"):  # a bind-all address; connect locally
+    if hostname in ("0.0.0.0", "::"):  # a bind-all address; connect locally  # nosec B104
         hostname = "localhost"
     if ":" in hostname:
         hostname = f"[{hostname}]"
