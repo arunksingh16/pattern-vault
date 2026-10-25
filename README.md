@@ -387,7 +387,7 @@ The Python application is packaged as `pattern-vault`.
 cd web && npm run build && cd ..
 cp -R web/dist pattern_vault/web_dist   # put the UI inside the wheel
 uv build
-python -m pip install dist/pattern_vault-0.2.0-py3-none-any.whl
+python -m pip install dist/pattern_vault-0.2.1-py3-none-any.whl
 pattern-vault --help
 ```
 

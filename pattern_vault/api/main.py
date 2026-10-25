@@ -57,7 +57,7 @@ def create_app(
     extra_hosts: Sequence[str] = (),
     allow_any_host: bool = False,
 ) -> FastAPI:
-    app = FastAPI(title="Pattern Vault", version="0.2.0", lifespan=lifespan)
+    app = FastAPI(title="Pattern Vault", version="0.2.1", lifespan=lifespan)
     allowed_hosts = LOOPBACK_HOSTS | {host.lower().strip("[]") for host in extra_hosts}
 
     # Rejecting unknown Host headers stops DNS-rebinding pages from reaching the API.

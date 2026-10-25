@@ -21,7 +21,7 @@ def test_version_flag_prints_package_version(capsys):
         cli.main(["--version"])
 
     assert exc.value.code == 0
-    assert "0.2.0" in capsys.readouterr().out
+    assert "0.2.1" in capsys.readouterr().out
 
 
 def test_mcp_subcommand_runs_mcp_server(monkeypatch):

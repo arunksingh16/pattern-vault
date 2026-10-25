@@ -275,7 +275,13 @@ uv run pv mcp --transport http --port 8002                      # MCP server (HT
 
 ## Releasing
 
-1. Bump `version` in `pyproject.toml` (and `web/package.json`, plus the label in `web/src/components/SideNav.tsx`).
+1. Bump `version` in `pyproject.toml`, then the same number in:
+   - `web/package.json` and `web/package-lock.json` (`npm version X.Y.Z --no-git-tag-version` in `web/`)
+   - the label in `web/src/components/SideNav.tsx`
+   - `FastAPI(version=...)` in `pattern_vault/api/main.py`
+   - the `--version` assertion in `tests/test_cli.py`
+   - the wheel filename in `README.md`
+   - `uv.lock` (`uv lock`)
 2. Commit, then push a matching tag, for example `git tag v0.2.0 && git push origin v0.2.0`.
 3. `release.yml`:
    - checks the tag matches `pyproject.toml`
